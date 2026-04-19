@@ -37,6 +37,8 @@ Version 1.10.0 was yanked from PyPI. Use 1.10.1 or later.
 - **Scoped streaming handlers**: chunk handlers are scoped per-run to prevent contamination across concurrent crew executions
 - **Security patches**: authlib, langchain-text-splitters, and pypdf updated; cryptography pinned to 46.0.7 (CVE-2026-39892)
 - **`flow_finished` event fix**: event now correctly fires after HITL resume in Flows
+- **Bedrock tool call argument preservation fix**: fixed argument dropping when routing through Amazon Bedrock Converse API
+- **Cyclic JSON schema fix**: MCP tool resolution now correctly handles cyclic JSON schema references
 
 ## 🆕 What's New in v1.14.1 (April 9, 2026)
 
