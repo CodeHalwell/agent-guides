@@ -14,7 +14,7 @@
 - **Vertex AI Agent Engine Sandbox**: computer-use agents can run inside Agent Engine sandboxes
 - **Firestore database support**: first-class Firestore integration as a database backend for agent state
 - **Session ID tracking in LLM responses**: session IDs are now propagated through LLM response objects
-- **Parameter/Secret Manager headers**: user-agent headers added to Parameter Manager and Secret Manager API clients
+- **Parameter Manager and Secret Manager user-agent headers**: user-agent headers added to Parameter Manager and Secret Manager API clients
 - **MCP 1.24.0 minimum**: minimum supported MCP version raised to 1.24.0
 - **Bug fixes**: console URL path corrections after Agent Engine deployment; event callback timing fix (plugin modifications now persist correctly); `FunctionDeclaration` JSON schema fallback improved; BigQuery plugin data transfer and metadata issues resolved
 
