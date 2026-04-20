@@ -8,8 +8,7 @@
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro",
-    "port-content": "node scripts/port-content.mjs"
+    "astro": "astro"
   },
   "dependencies": {
     "@astrojs/react": "^4.3.0",
