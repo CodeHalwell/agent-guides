@@ -58,7 +58,11 @@ Version 1.10.0 was yanked from PyPI. Use 1.10.1 or later.
 ## 🆕 What's New in v1.14.0 (April 7, 2026)
 
 - **Checkpoint System** (`CheckpointConfig` + `SqliteProvider`): save crew state at each task boundary; resume from the last checkpoint after failures
+
+  > ⚠️ **API status (verified 2026-04-20 against crewai 1.14.2):** `CheckpointConfig` was not found in the stable `crewai` 1.14.2 package via `uv` install. The checkpoint CLI commands (`crewai checkpoint list`, `crewai checkpoint info`) may be available; verify against the [official CrewAI docs](https://docs.crewai.com/) before using the Python API below.
+
   ```python
+  # NOTE: CheckpointConfig not confirmed in stable 1.14.2 — verify before use
   from crewai import Crew, CheckpointConfig
   crew = Crew(
       agents=[...], tasks=[...],

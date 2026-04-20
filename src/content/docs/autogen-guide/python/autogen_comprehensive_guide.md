@@ -2030,10 +2030,10 @@ The package name changes, but imports can remain the same:
 import autogen  # Still works with AG2!
 
 # Option 2: Use new AG2 imports
-import ag2 as autogen  # AG2 with AutoGen alias
+import autogen  # AG2 with AutoGen alias
 
 # Option 3: Full AG2 imports
-from ag2 import ConversableAgent, AssistantAgent, UserProxyAgent
+from autogen import ConversableAgent, AssistantAgent, UserProxyAgent
 ```
 
 #### Step 3: Update Configuration Files (Optional)

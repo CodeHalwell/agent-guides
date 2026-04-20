@@ -34,7 +34,7 @@ pip install ag2
 # Compatibility note: pre-0.11.5 imports used `from autogen import ...`
 # As of 0.11.x, the canonical package is `ag2` (or `autogen` as an alias).
 # Use `from autogen.beta import ...` for the new event-driven API.
-from ag2 import Agent, GroupChat, GroupChatManager
+from autogen import Agent, GroupChat, GroupChatManager
 
 # Define agents
 user_proxy = Agent(
