@@ -48,7 +48,7 @@ export const frameworks: Framework[] = [
     category: 'Multi-Agent',
     difficulty: 'Intermediate',
     useCases: ['chatbot', 'multi-agent', 'customer-service'],
-    version: 'v0.14.2',
+    version: 'v0.14.3',
   },
   {
     id: 'openai-agents-ts',
@@ -134,7 +134,7 @@ export const frameworks: Framework[] = [
     category: 'Data & RAG',
     difficulty: 'Advanced',
     useCases: ['search', 'qa', 'rag'],
-    version: 'v2.15.0',
+    version: 'v2.28.0',
   },
   {
     id: 'bedrock',
@@ -155,7 +155,7 @@ export const frameworks: Framework[] = [
     category: 'Cloud-Native',
     difficulty: 'Intermediate',
     useCases: ['azure', 'enterprise', 'a2a'],
-    version: '1.0 GA',
+    version: 'v1.0.1',
   },
   {
     id: 'google-adk',
