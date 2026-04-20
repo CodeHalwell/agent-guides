@@ -3,12 +3,18 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import react from '@astrojs/react';
 import tailwindcss from '@tailwindcss/vite';
+import remarkBasePath from './src/plugins/remark-base-path.mjs';
+
+const base = '/AgentGuides';
 
 // https://astro.build/config
 export default defineConfig({
   site: 'https://codehalwell.github.io',
-  base: '/AgentGuides',
+  base,
   trailingSlash: 'ignore',
+  markdown: {
+    remarkPlugins: [[remarkBasePath, { base }]],
+  },
   integrations: [
     react(),
     starlight({

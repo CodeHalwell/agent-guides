@@ -1,6 +1,6 @@
 ---
 title: "Claude Agent SDK (TypeScript) - Practical Recipes and Examples"
-description: "json\\n([\\s\\S]?)\\ntypescript\\n([\\s\\S]?)\\njson\\n([\\s\\S]?)\\n"
+description: "Practical code recipes and implementation examples for the Anthropic Claude Agent SDK in TypeScript."
 framework: anthropic-claude-agent-sdk-typescript
 ---
 

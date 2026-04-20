@@ -122,7 +122,7 @@ function Select({
       >
         {options.map((o) => (
           <option key={o} value={o}>
-            {label}: {o}
+            {o}
           </option>
         ))}
       </select>
