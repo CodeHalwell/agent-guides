@@ -384,44 +384,49 @@ const continued = query({
 
 ### Supported Claude Models
 
-#### Claude 3.5 Sonnet (Recommended for Agents)
+#### Claude Sonnet 4.6 (Recommended for Agents)
+- **Model ID**: `claude-sonnet-4-6`
 - **Best For**: Most agentic tasks, complex reasoning, balanced cost/performance
 - **Context Window**: 200K tokens
 - **Strengths**: Excellent at tool use, reasoning, code understanding
 - **Cost**: Mid-range (balance of capability and cost)
 
-```typescript
-// TypeScript
-const response = query({
-  prompt: "Your task here",
-  options: { model: "claude-3-5-sonnet-20241022" }
-});
+```python
+async for message in query(
+    prompt="Your task here",
+    options=ClaudeAgentOptions(model="claude-sonnet-4-6")
+):
+    ...
 ```
 
-#### Claude 3.5 Opus (Complex Reasoning)
+#### Claude Opus 4.7 (Complex Reasoning)
+- **Model ID**: `claude-opus-4-7`
 - **Best For**: Complex multi-step reasoning, large context windows
 - **Context Window**: 200K tokens
 - **Strengths**: Strongest reasoning, best at complex coordination
 - **Cost**: Premium (highest capability tier)
 
-```typescript
-const response = query({
-  prompt: "Complex orchestration task",
-  options: { model: "claude-3-5-opus-20241022" }
-});
+```python
+async for message in query(
+    prompt="Complex orchestration task",
+    options=ClaudeAgentOptions(model="claude-opus-4-7")
+):
+    ...
 ```
 
-#### Claude 3.5 Haiku (Cost-Efficient)
+#### Claude Haiku 4.5 (Cost-Efficient)
+- **Model ID**: `claude-haiku-4-5-20251001`
 - **Best For**: Simple tasks, lightweight operations, cost-sensitive applications
 - **Context Window**: 200K tokens
 - **Strengths**: Fast, low-cost, good for simple logic
 - **Cost**: Economy (lowest cost tier)
 
-```typescript
-const response = query({
-  prompt: "Simple task",
-  options: { model: "claude-3-5-haiku-20241022" }
-});
+```python
+async for message in query(
+    prompt="Simple task",
+    options=ClaudeAgentOptions(model="claude-haiku-4-5-20251001")
+):
+    ...
 ```
 
 ---
@@ -881,7 +886,7 @@ async function trackTokenUsage(
 
   const totalTokens = inputTokens + outputTokens;
   
-  // Pricing as of 2024 (Claude 3.5 Sonnet)
+  // Example pricing (verify current rates at anthropic.com/pricing)
   const inputCostPer1kTokens = 0.003;
   const outputCostPer1kTokens = 0.015;
   

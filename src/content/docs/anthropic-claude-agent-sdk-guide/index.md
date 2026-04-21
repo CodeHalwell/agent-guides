@@ -16,7 +16,7 @@ The **Claude Agent SDK** (formerly Claude Code SDK) is Anthropic's comprehensive
 
 - 🖥️ **Control computers** through mouse, keyboard, and screen interactions
 - 🔧 **Execute tools and commands** with fine-grained permission controls
-- 🧠 **Reason autonomously** using Claude's state-of-the-art reasoning capabilities (Claude Sonnet 4.5)
+- 🧠 **Reason autonomously** using Claude's state-of-the-art reasoning capabilities (Claude Sonnet 4.6)
 - 🔌 **Extend functionality** through the Model Context Protocol (MCP)
 - 📊 **Manage context efficiently** with automatic compaction mechanisms
 - 🔐 **Enforce security** with advanced permissions and sandboxing
@@ -102,7 +102,7 @@ The Claude Agent SDK represents a significant evolution from the Claude Code SDK
 ### Critical Updates
 
 1. **Rebranding**: Claude Code SDK → Claude Agent SDK (broader capabilities)
-2. **Claude Sonnet 4.5**: Latest frontier model with superior reasoning
+2. **Claude Sonnet 4.6**: Latest frontier model with superior reasoning
 3. **Subagents**: Specialized agents for parallel task decomposition
 4. **Hooks System**: Inject custom logic at pre/post execution points
 5. **Enhanced MCP**: Define custom Python functions as tools
@@ -130,7 +130,7 @@ This guide collection provides **exhaustive coverage** from beginner concepts to
 - Step-by-step migration instructions
 - Breaking changes documentation
 - Code migration examples (before/after)
-- New features overview (Sonnet 4.5, subagents, hooks, MCP)
+- New features overview (Sonnet 4.6, subagents, hooks, MCP)
 - Troubleshooting common migration issues
 - Python 3.10+ requirement updates
 
@@ -149,7 +149,7 @@ The definitive technical reference covering all core concepts, APIs, and feature
 - Multi-agent orchestration patterns
 - **🆕 Subagents**: Specialized task decomposition
 - **🆕 Hooks System**: Pre/post execution logic injection
-- **🆕 Claude Sonnet 4.5**: Latest model integration
+- **🆕 Claude Sonnet 4.6**: Latest model integration
 - Session and context management
 - Advanced configuration options
 - Model selection strategies
@@ -298,8 +298,8 @@ Built-in support for:
 
 ## 🔑 Key Features Explained
 
-### 1. **Claude Sonnet 4.5 Integration** 🆕
-Latest frontier model with superior reasoning capabilities, enhanced tool use, and improved multi-step planning. Built on the same infrastructure that powers Claude Code.
+### 1. **Claude Sonnet 4.6 Integration**
+Latest frontier model with superior reasoning capabilities, enhanced tool use, and improved multi-step planning.
 
 ### 2. **Subagents for Task Decomposition** 🆕
 Define specialized subagents that execute tasks in parallel. Each subagent can have its own tools, model, and configuration for optimal task completion.
@@ -431,7 +431,7 @@ Beyond coding tasks - support for CSV processing, web research, data visualizati
 - Anthropic API key (free at console.anthropic.com)
 - Basic command line knowledge
 - Understanding of async programming concepts
-- **Claude Sonnet 4.5** 🆕 Access (recommended model for 2025)
+- **Claude Sonnet 4.6** access (recommended model)
 
 ---
 
@@ -455,9 +455,9 @@ Throughout these guides, you'll find:
 - Copy-paste safe with proper error handling
 
 ### Models Referenced
-- **Claude 3.5 Sonnet** - Default recommendation for agentic tasks
-- **Claude 3.5 Opus** - For complex reasoning and multi-step tasks
-- **Claude 3.5 Haiku** - For lightweight and cost-effective operations
+- **Claude Sonnet 4.6** (`claude-sonnet-4-6`) - Default recommendation for agentic tasks
+- **Claude Opus 4.7** (`claude-opus-4-7`) - For complex reasoning and multi-step tasks
+- **Claude Haiku 4.5** (`claude-haiku-4-5-20251001`) - For lightweight and cost-effective operations
 
 ### Terminology
 - **Agent** - An autonomous AI entity capable of performing tasks
@@ -565,12 +565,13 @@ Ready to build intelligent agents? Start reading the Comprehensive Guide →
 
 ---
 
-## 📋 Revision History
+## Revision History
 
-| Date | Version | Changes |
-|------|---------|---------|
-| April 18, 2026 | 0.1.63 | Updated to v0.1.63; `get_context_usage()` via `ClaudeSDKClient`; `typing.Annotated` support for per-parameter descriptions in `@tool` and `create_sdk_mcp_server`; `tool_use_id` and `agent_id` in `ToolPermissionContext` for parallel call disambiguation |
-| April 16–17, 2026 | 0.1.60 | Patch releases (0.1.60–0.1.62) — stability and compatibility improvements; no breaking changes from v0.1.59 |
-| April 16, 2026 | 0.1.59 | `claude_code_sdk` → `claude_agent_sdk` import rename; `ClaudeCodeOptions` → `ClaudeAgentOptions`; structured outputs; extended thinking config; file checkpointing and session rewind; bundled CLI; fallback model handling |
-| November 2025 | 0.1.6 | Initial guide; agent creation; tool use; memory systems; production deployment |
+| Date | Framework version | Summary of changes | Reviewer |
+|------|-------------------|--------------------|----------|
+| 2026-04-21 | 0.1.63 | Updated model references: Claude 3.5 Sonnet/Opus/Haiku → Claude Sonnet 4.6 / Opus 4.7 / Haiku 4.5 with canonical model IDs; removed erroneous "Claude Sonnet 4.5" (was 4.6) references throughout index. | Claude routine |
+| 2026-04-18 | 0.1.63 | Updated to v0.1.63; `get_context_usage()` via `ClaudeSDKClient`; `typing.Annotated` support for per-parameter descriptions in `@tool` and `create_sdk_mcp_server`; `tool_use_id` and `agent_id` in `ToolPermissionContext` for parallel call disambiguation | Claude routine |
+| 2026-04-16 | 0.1.60 | Patch releases (0.1.60–0.1.62) — stability and compatibility improvements; no breaking changes from v0.1.59 | Claude routine |
+| 2026-04-16 | 0.1.59 | `claude_code_sdk` → `claude_agent_sdk` import rename; `ClaudeCodeOptions` → `ClaudeAgentOptions`; structured outputs; extended thinking config; file checkpointing and session rewind; bundled CLI; fallback model handling | Claude routine |
+| 2025-11 | 0.1.6 | Initial guide; agent creation; tool use; memory systems; production deployment | — |
 
