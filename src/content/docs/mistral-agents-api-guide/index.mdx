@@ -87,7 +87,7 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
 
 ```python
 import os
-from mistralai import Mistral
+from mistralai.client import Mistral   # import from mistralai.client, NOT from mistralai
 
 client = Mistral(api_key=os.environ["MISTRAL_API_KEY"])
 

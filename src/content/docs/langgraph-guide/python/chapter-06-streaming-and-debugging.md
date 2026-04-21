@@ -108,6 +108,8 @@ async for part in graph.astream(
 ### v2 Invoke
 
 ```python
+from langgraph.types import GraphOutput  # the v2 return type
+
 # v2 invoke returns a GraphOutput instead of a dict
 result = await graph.ainvoke(
     {"messages": [{"role": "user", "content": "Hello"}]},
@@ -116,7 +118,7 @@ result = await graph.ainvoke(
 
 # GraphOutput has .value (final state) and .interrupts (any Human-in-the-Loop interrupts)
 print(result.value)       # Final state dict
-print(result.interrupts)  # List of interrupt points (if any)
+print(result.interrupts)  # Tuple of interrupt points (empty tuple when none)
 ```
 
 ### Pydantic/Dataclass Auto-Coercion

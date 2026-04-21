@@ -81,7 +81,7 @@ export default defineConfig({
                     { label: '5 · Memory & persistence', link: '/langgraph-guide/python/chapter-05-memory/' },
                     { label: '6 · Streaming & debugging', link: '/langgraph-guide/python/chapter-06-streaming-and-debugging/' },
                     { label: '7 · Human-in-the-loop', link: '/langgraph-guide/python/chapter-07-human-in-the-loop/' },
-                    { label: '8 · Middleware (hooks)', link: '/langgraph-guide/python/chapter-08-middleware-hooks/' },
+                    { label: '8 · Middleware', link: '/langgraph-guide/python/chapter-08-middleware-hooks/' },
                     { label: '9 · Advanced patterns', link: '/langgraph-guide/python/chapter-09-advanced-patterns/' },
                     { label: '10 · Production & troubleshooting', link: '/langgraph-guide/python/chapter-10-production/' },
                   ],

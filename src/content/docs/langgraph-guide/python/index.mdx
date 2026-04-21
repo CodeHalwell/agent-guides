@@ -19,7 +19,7 @@ import { Card, CardGrid, LinkCard, Aside, Tabs, TabItem } from '@astrojs/starlig
     ```
   </Card>
   <Card title="Version" icon="information">
-    **v1.1.8** · April 2026 · Python 3.10+
+    **v1.1.9** · April 2026 · Python 3.10 – 3.14
   </Card>
   <Card title="Best for" icon="puzzle">
     Cycles, conditional routing, multi-agent coordination, HITL workflows.
@@ -42,8 +42,8 @@ A chaptered tutorial that takes you from a first graph to a production-ready age
   <LinkCard title="5 · Memory & persistence" href="/langgraph-guide/python/chapter-05-memory/" description="Checkpointers, Store, cross-thread memory · 25 min" />
   <LinkCard title="6 · Streaming & debugging" href="/langgraph-guide/python/chapter-06-streaming-and-debugging/" description="Stream modes, type-safe v2 API, visualization · 15 min" />
   <LinkCard title="7 · Human-in-the-loop" href="/langgraph-guide/python/chapter-07-human-in-the-loop/" description="Interrupts, multi-stage approval, interactive debug · 25 min" />
-  <LinkCard title="8 · Middleware (hooks)" href="/langgraph-guide/python/chapter-08-middleware-hooks/" description="Pre/post model hooks, rate limiting, guardrails · 20 min" />
-  <LinkCard title="9 · Advanced patterns" href="/langgraph-guide/python/chapter-09-advanced-patterns/" description="ReAct, ToT, reflection, caching, deferred nodes, Command tool · 40 min" />
+  <LinkCard title="8 · Middleware" href="/langgraph-guide/python/chapter-08-middleware-hooks/" description="langchain.agents.middleware — PII, summarization, retries, HITL, cost limits · 20 min" />
+  <LinkCard title="9 · Advanced patterns" href="/langgraph-guide/python/chapter-09-advanced-patterns/" description="ReAct, Tree-of-Thoughts, reflection, structured output, caching, Functional API · 25 min" />
   <LinkCard title="10 · Production & troubleshooting" href="/langgraph-guide/python/chapter-10-production/" description="Docker, CLI, SDK, common pitfalls · 20 min" />
 </CardGrid>
 
@@ -61,7 +61,7 @@ Need one specific concept? Land directly on the chapter that owns it.
   <LinkCard title="Store (long-term memory)" href="/langgraph-guide/python/chapter-05-memory/#long-term-memory-store" />
   <LinkCard title="Type-safe v2 API" href="/langgraph-guide/python/chapter-06-streaming-and-debugging/#type-safe-v2-api-v11x" />
   <LinkCard title="Interrupts (HITL)" href="/langgraph-guide/python/chapter-07-human-in-the-loop/#basic-interrupts" />
-  <LinkCard title="Pre/post model hooks" href="/langgraph-guide/python/chapter-08-middleware-hooks/" />
+  <LinkCard title="Middleware (create_agent)" href="/langgraph-guide/python/chapter-08-middleware-hooks/" />
   <LinkCard title="ReAct pattern" href="/langgraph-guide/python/chapter-09-advanced-patterns/#pattern-1-react-reasoning--acting" />
   <LinkCard title="Functional API" href="/langgraph-guide/python/chapter-09-advanced-patterns/#functional-api-langgraph-10" />
 </CardGrid>
@@ -79,17 +79,16 @@ Need one specific concept? Land directly on the chapter that owns it.
   <LinkCard title="Streaming server (FastAPI)" href="/langgraph-guide/python/langgraph_streaming_server_fastapi/" />
 </CardGrid>
 
-## What's new in v1.1.8 (April 2026)
+## What's new in v1.1.x (April 2026)
 
-- **Type-safe streaming (v2 API)** — opt-in with `version="v2"`; unified `StreamPart` output with `type`, `ns`, `data` keys.
-- **Type-safe invoke (v2 API)** — returns `GraphOutput` with `.value` and `.interrupts`.
-- **Pydantic/dataclass coercion** — `invoke()` auto-coerces declared types.
-- **Python 3.14 support** added; **Python 3.9 dropped**.
+- **Type-safe streaming (v2 API)** — opt-in with `version="v2"` on `astream()`; yields `StreamPart` objects with `type`, `ns`, `data` fields (import from `langgraph.types`).
+- **Type-safe invoke (v2 API)** — `ainvoke(..., version="v2")` returns a `GraphOutput` (from `langgraph.types`) with `.value` (final state dict) and `.interrupts` (tuple of interrupt points).
+- **Pydantic/dataclass coercion** — `invoke()` auto-coerces input dicts to the declared state type.
+- **Python 3.10 – 3.14 support** — Python 3.9 dropped in the 1.1 line.
 - **Time-travel fixes** — replays no longer reuse stale `RESUME` values with interrupts and subgraphs.
 
-<Aside type="caution" title="Breaking changes since v1.0">
-  - Python 3.9 is no longer supported (minimum 3.10).
-  - `langgraph-prebuilt==1.0.9` introduced an `ImportError` for `ServerInfo` when paired with older `langgraph`. Pin both packages together.
+<Aside type="caution" title="Verified against installed library">
+  Introspected against `langgraph==1.1.9` in April 2026. Earlier drafts of these pages documented a `langgraph.llm_hooks` module and a `langgraph.cache.cache_node` decorator — neither exists. The real middleware API is `langchain.agents.create_agent(middleware=[...])`; see [Chapter 8](./chapter-08-middleware-hooks/).
 </Aside>
 
 ## Install, minimal example
