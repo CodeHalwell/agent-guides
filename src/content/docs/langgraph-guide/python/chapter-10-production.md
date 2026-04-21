@@ -45,21 +45,21 @@ docker run -p 8000:8000 \
 
 ### CLI Configuration
 
+Save the following as `langgraph.json` in your project root:
+
 ```json
 {
-  "langgraph.json": {
-    "dependencies": [
-      "langchain_anthropic",
-      "langchain_tavily",
-      "./agents"
-    ],
-    "graphs": {
-      "main_agent": "./agents.py:graph",
-      "research_agent": "./agents.py:research_graph"
-    },
-    "env": "./.env",
-    "python_version": "3.11"
-  }
+  "dependencies": [
+    "langchain_anthropic",
+    "langchain_tavily",
+    "./agents"
+  ],
+  "graphs": {
+    "main_agent": "./agents.py:graph",
+    "research_agent": "./agents.py:research_graph"
+  },
+  "env": "./.env",
+  "python_version": "3.11"
 }
 ```
 

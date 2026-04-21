@@ -16,6 +16,8 @@ sidebar:
 
 > Prereqs: [Chapter 5 — Memory & persistence](/langgraph-guide/python/chapter-05-memory/). Interrupts require a checkpointer.
 
+> **Note on code snippets.** The examples below are **illustrative fragments** focused on the interrupt/resume pattern itself. They assume the standard imports from earlier chapters (`StateGraph`, `START`, `END`, `InMemorySaver`, `TypedDict`, `Annotated`) and elide helper stubs (`stream_events`, `refine_node`, `finalize_node`, `process`) — substitute your own. For end-to-end runnable HITL agents see the [Recipes collection](/langgraph-guide/python/langgraph_recipes/).
+
 ## Human-in-the-Loop
 
 ### Basic Interrupts

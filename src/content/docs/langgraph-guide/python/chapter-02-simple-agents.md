@@ -34,21 +34,23 @@ class State(TypedDict):
     messages: Annotated[list, add_messages]
     user_name: str
 
-def fetch_user_context(state: State):
+# Construct the model ONCE at module scope and reuse it across every node
+# invocation — creating a ChatAnthropic client per call is unnecessarily
+# expensive in production. Nodes should stay focused on state transforms.
+model = ChatAnthropic(model="claude-3-5-sonnet-20241022")
+
+def fetch_user_context(state: State) -> dict:
     """Load user info from database."""
     # Simulate DB lookup
     return {"user_name": "Alice"}
 
-def call_model(state: State):
+def call_model(state: State) -> dict:
     """Call LLM with messages."""
-    model = ChatAnthropic(model="claude-3-5-sonnet-20241022")
-    
     system_prompt = f"You're helping {state['user_name']}. Be concise."
-    
     response = model.invoke(state["messages"], system_prompt=system_prompt)
     return {"messages": [response]}
 
-def save_conversation(state: State):
+def save_conversation(state: State) -> dict:
     """Persist messages to database."""
     # Save state["messages"] to DB
     return {}
@@ -96,10 +98,13 @@ class State(TypedDict):
     query_type: str
     result: str
 
+# Reuse a single model instance across all node calls.
+model = ChatAnthropic(model="claude-3-5-sonnet-20241022")
+
 def classify_query(state: State) -> dict:
     """Determine query type."""
     query = state["query"].lower()
-    
+
     if any(word in query for word in ["search", "find", "lookup"]):
         return {"query_type": "search"}
     elif any(word in query for word in ["calculate", "math", "solve"]):
@@ -120,7 +125,6 @@ def solve_math(state: State) -> dict:
 
 def general_response(state: State) -> dict:
     """Handle general queries."""
-    model = ChatAnthropic(model="claude-3-5-sonnet-20241022")
     response = model.invoke(state["query"])
     return {"result": response.content}
 

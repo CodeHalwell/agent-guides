@@ -134,9 +134,12 @@ builder = StateGraph(MyState)
 # ... graph setup ...
 graph = builder.compile()
 
-# Pass dict directly — auto-coerced to MyState
+# Pass dict directly — auto-coerced to MyState *on input*.
+# The return type of `ainvoke()` is a dict representing the final state
+# (v1 API). For a typed return object use `version="v2"` and read
+# `result.value` / `result.interrupts` from the `GraphOutput`.
 result = await graph.ainvoke({"query": "What is LangGraph?"})
-print(type(result))  # MyState
+print(type(result))  # dict
 ```
 
 ### Getting State at Any Point

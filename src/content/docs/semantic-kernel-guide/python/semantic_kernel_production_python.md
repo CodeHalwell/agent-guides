@@ -601,5 +601,5 @@ See: [Middleware Guide](./semantic_kernel_middleware_python/) for guardrails imp
 - [General Production Guide](../semantic_kernel_production_guide/) - Language-agnostic patterns
 - [Streaming Server Guide](./semantic_kernel_streaming_server_fastapi/) - FastAPI patterns
 
-**[Back to Python README](./)** | **[Complete Index](./guide_index/)**
+**[Back to Python README](./)** | **[Overview](./)**
 

@@ -16,9 +16,37 @@ sidebar:
 
 > Prereqs: [Chapter 4 — Tools](/langgraph-guide/python/chapter-04-tools/).
 
+> **Note on code snippets.** The hook examples below focus on the hook body itself. They assume the standard imports and shared helpers listed under [Shared imports & stubs](#shared-imports--stubs) — copy that block once at the top of your file, then the hook snippets run as-is.
+
 ## Why hooks?
 
 Rather than scattering guardrails across every node that calls a model, hooks run automatically around each LLM call. You declare them once and they apply wherever the model is invoked — giving you cross-cutting control without polluting your business logic.
+
+## Shared imports & stubs
+
+```python
+from typing import Any, Annotated, TypedDict
+import logging
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph.message import add_messages
+from langgraph.llm_hooks import pre_model_hook, post_model_hook
+from langchain_anthropic import ChatAnthropic
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def filter_sensitive_data(text: str) -> str:
+    """Minimal placeholder redaction — swap for your DLP/regex pipeline."""
+    return text.replace("password", "[REDACTED]").replace("api_key", "[REDACTED]")
+
+def contains_inappropriate_content(text: str) -> bool:
+    """Minimal placeholder moderation — swap for Azure AI Content Safety,
+    OpenAI Moderations, or your own classifier in production."""
+    flagged_terms = ("hate", "violence", "self-harm")
+    return any(term in text.lower() for term in flagged_terms)
+```
 
 ## Pre/Post Model Hooks
 
@@ -27,9 +55,6 @@ Hooks that run before and after model calls let you customize LLM behaviour with
 ### Basic Model Hooks
 
 ```python
-from langgraph.llm_hooks import pre_model_hook, post_model_hook
-from langchain_anthropic import ChatAnthropic
-
 class ConversationState(TypedDict):
     messages: Annotated[list, add_messages]
     user_id: str
@@ -127,15 +152,23 @@ print(f"Cost: ${result['cost']:.4f}")
 
 #### Advanced Hook Patterns
 
+> ⚠️ **Production-ready rate limiting.** The snippet below uses an in-memory
+> module-level dict, which is fine for single-process demos but **will not
+> enforce limits across threads, workers, or instances** and will grow
+> unbounded as new `user_id`s arrive. In production, delegate rate limiting
+> to a shared backend (Redis, an API gateway, Cloudflare, Envoy) so the
+> decision is centralised. Treat the hook as the enforcement point, not the
+> store.
+
 ```python
-# Rate limiting hook
+# Rate limiting hook — in-memory demo. See production note above.
 from datetime import datetime, timedelta
 
-rate_limits = {}  # user_id -> list of timestamps
+rate_limits: dict[str, list[datetime]] = {}  # user_id -> list of timestamps
 
 @pre_model_hook
 def rate_limit_hook(state: ConversationState, messages: list) -> dict:
-    """Enforce rate limits per user."""
+    """Enforce rate limits per user (single-process demo)."""
 
     user_id = state.get("user_id")
     now = datetime.now()
@@ -156,6 +189,29 @@ def rate_limit_hook(state: ConversationState, messages: list) -> dict:
     # Record this call
     rate_limits[user_id].append(now)
 
+    return {}
+
+
+# Production-safe variant — delegate to a shared rate limiter.
+def allow_request_with_shared_rate_limiter(
+    user_id: str,
+    limit: int = 10,
+    window_seconds: int = 60,
+) -> bool:
+    """Back with Redis (sliding-window or token bucket), an API gateway, or
+    another centralised service. Avoid module-level dicts in production."""
+    raise NotImplementedError(
+        "Wire this to Redis / API gateway / shared service."
+    )
+
+@pre_model_hook
+def rate_limit_hook_shared(state: ConversationState, messages: list) -> dict:
+    """Enforce rate limits per user via shared infrastructure."""
+    user_id = state.get("user_id")
+    if not user_id:
+        return {}
+    if not allow_request_with_shared_rate_limiter(user_id=user_id):
+        raise Exception(f"Rate limit exceeded for user {user_id}")
     return {}
 
 # Context bloat prevention

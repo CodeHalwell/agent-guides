@@ -173,5 +173,5 @@ For more recipes, see:
 - [Production Guide](./semantic_kernel_production_dotnet/)
 - [General Recipes](../semantic_kernel_recipes/)
 
-**[Back to .NET README](./)** | **[Complete Index](./guide_index/)**
+**[Back to .NET README](./)** | **[Overview](./)**
 

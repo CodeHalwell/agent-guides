@@ -92,7 +92,7 @@ class State(TypedDict):
     message: str
     response: str
 
-def process_node(state: State):
+def process_node(state: State) -> dict:
     return {"response": f"Processed: {state['message']}"}
 
 # Build graph

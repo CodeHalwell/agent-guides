@@ -519,5 +519,5 @@ For more recipes, see:
 - [Advanced Multi-Agent Guide](./semantic_kernel_advanced_multi_agent_python/) - Complex multi-agent patterns
 - [General Recipes](../semantic_kernel_recipes/) - Language-agnostic examples
 
-**[Back to Python README](./)** | **[Complete Index](./guide_index/)**
+**[Back to Python README](./)** | **[Overview](./)**
 

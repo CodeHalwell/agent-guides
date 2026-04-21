@@ -41,12 +41,37 @@ def research_tool(query: str) -> str:
 
 @tool
 def calculator_tool(expression: str) -> str:
-    """Evaluate math expressions."""
-    # In a real scenario, use a safe evaluation library
-    return str(eval(expression))
+    """Evaluate a simple arithmetic expression.
+
+    SECURITY: never call `eval()` on model/user-provided input — it executes
+    arbitrary Python. We restrict the AST to a small set of arithmetic nodes.
+    For anything beyond `+ - * / ** ()`, use a dedicated library such as
+    `simpleeval` or a CAS like SymPy.
+    """
+    import ast
+    import operator as op
+
+    allowed_binops = {
+        ast.Add: op.add, ast.Sub: op.sub,
+        ast.Mult: op.mul, ast.Div: op.truediv,
+        ast.Pow: op.pow, ast.Mod: op.mod,
+    }
+    allowed_unaryops = {ast.UAdd: op.pos, ast.USub: op.neg}
+
+    def _eval(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return node.value
+        if isinstance(node, ast.BinOp) and type(node.op) in allowed_binops:
+            return allowed_binops[type(node.op)](_eval(node.left), _eval(node.right))
+        if isinstance(node, ast.UnaryOp) and type(node.op) in allowed_unaryops:
+            return allowed_unaryops[type(node.op)](_eval(node.operand))
+        raise ValueError(f"Unsupported expression: {ast.dump(node)}")
+
+    tree = ast.parse(expression, mode="eval")
+    return str(_eval(tree.body))
 
 # Helper function to create a specialist agent
-def create_agent(llm, tools: list, system_prompt: str):
+def create_agent(llm, tools: list, system_prompt: str) -> AgentExecutor:
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
         ("placeholder", "{chat_history}"),
@@ -58,7 +83,7 @@ def create_agent(llm, tools: list, system_prompt: str):
     return executor
 
 # Create agent runner function
-def agent_node(state, agent, name):
+def agent_node(state: dict, agent: AgentExecutor, name: str) -> dict:
     result = agent.invoke(state)
     return {"messages": [BaseMessage(type="human", content=result["output"], name=name)]}
 
@@ -137,52 +162,49 @@ Fan-out to multiple workers, collect results:
 ```python
 from langgraph.types import Send
 
+# Shared graph state — only fields the main graph sees.
 class WorkflowState(TypedDict):
     tasks: list[dict]
-    results: Annotated[dict, lambda x, y: {**x, **y}]  # Merge dicts
+    results: Annotated[dict, lambda x, y: {**x, **y}]  # reducer merges dicts
 
-def split_tasks(state: WorkflowState) -> list[Send]:
-    """Create parallel work for each task."""
+# Per-worker payload — the shape delivered by each `Send`. Workers see
+# exactly these fields, not the whole WorkflowState.
+class WorkerPayload(TypedDict):
+    task_id: str
+    task_data: str
+
+def dispatch(state: WorkflowState) -> list[Send]:
+    """Fan-out: one Send per task. Returning a list of Sends from a
+    conditional-edge function tells LangGraph to launch that many parallel
+    copies of the target node, each with its own payload."""
     return [
-        Send(
-            "worker",
-            {
-                "task_id": task["id"],
-                "task_data": task["data"]
-            }
-        )
+        Send("worker", {"task_id": task["id"], "task_data": task["data"]})
         for task in state["tasks"]
     ]
 
-def worker_node(state: WorkflowState) -> dict:
-    """Process one task."""
-    # Simulate work
-    result = f"Processed: {state['task_data']}"
-    return {"results": {state["task_id"]: result}}
+def worker_node(payload: WorkerPayload) -> dict:
+    """Process one task. Receives the per-worker payload from `Send`."""
+    result = f"Processed: {payload['task_data']}"
+    # Returning to the shared WorkflowState: the `results` reducer merges
+    # each worker's single-entry dict into the aggregate dict.
+    return {"results": {payload["task_id"]: result}}
 
 def collect_results(state: WorkflowState) -> dict:
-    """Aggregate all results."""
+    """Fan-in: runs once after all workers complete."""
     summary = f"Completed {len(state['results'])} tasks"
     return {"results": {"summary": summary}}
 
 # Build parallel graph
 builder = StateGraph(WorkflowState)
-builder.add_node("split", split_tasks)
 builder.add_node("worker", worker_node)
 builder.add_node("collect", collect_results)
 
-# Fan-out: split → multiple workers
-builder.add_conditional_edges(
-    START,
-    lambda _: "split"
-)
-builder.add_conditional_edges(
-    "split",
-    lambda _: ["worker"],  # All Send objects go to worker
-    ["worker"]
-)
+# Fan-out: a conditional edge whose function returns list[Send] launches
+# N parallel workers. `["worker"]` is the list of allowed targets.
+builder.add_conditional_edges(START, dispatch, ["worker"])
 
-# Fan-in: collect all results
+# Fan-in: every worker edge lands on collect; LangGraph waits until all
+# parallel branches from a fan-out converge before running the next node.
 builder.add_edge("worker", "collect")
 builder.add_edge("collect", END)
 
