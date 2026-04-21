@@ -1,0 +1,134 @@
+---
+title: "LangGraph (Python)"
+description: "Stateful, graph-based agents for Python — zero to hero with chaptered tutorials and topic-jump references."
+framework: langgraph
+language: python
+sidebar:
+  label: "Overview"
+  order: 0
+---
+
+import { Card, CardGrid, LinkCard, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+**Low-level orchestration for stateful, long-running LLM agents.** LangGraph models your agent as a graph of nodes and edges with explicit state, durable checkpoints, and first-class human-in-the-loop.
+
+<CardGrid>
+  <Card title="Install" icon="rocket">
+    ```bash
+    pip install langgraph langchain-anthropic
+    ```
+  </Card>
+  <Card title="Version" icon="information">
+    **v1.1.8** · April 2026 · Python 3.10+
+  </Card>
+  <Card title="Best for" icon="puzzle">
+    Cycles, conditional routing, multi-agent coordination, HITL workflows.
+  </Card>
+</CardGrid>
+
+<Aside type="tip" title="Where to start">
+  New to LangGraph? Follow the **Zero → Hero** path below in order (~3–4 hours). Already building? Use **Jump to a topic** to land on the chapter you need.
+</Aside>
+
+## Zero → Hero
+
+A chaptered tutorial that takes you from a first graph to a production-ready agent. Each chapter has its own page with **Next →** pagination.
+
+<CardGrid>
+  <LinkCard title="1 · Setup & core concepts" href="/langgraph-guide/python/chapter-01-setup-and-core-concepts/" description="Install, state, nodes, edges, compilation · 15 min" />
+  <LinkCard title="2 · Your first agent" href="/langgraph-guide/python/chapter-02-simple-agents/" description="Linear chat, conditional routing, looping, streaming · 20 min" />
+  <LinkCard title="3 · Multi-agent systems" href="/langgraph-guide/python/chapter-03-multi-agent/" description="Supervisor, parallel workers, handoff · 25 min" />
+  <LinkCard title="4 · Tools" href="/langgraph-guide/python/chapter-04-tools/" description="ToolNode, custom executors, conditional tool use · 20 min" />
+  <LinkCard title="5 · Memory & persistence" href="/langgraph-guide/python/chapter-05-memory/" description="Checkpointers, Store, cross-thread memory · 25 min" />
+  <LinkCard title="6 · Streaming & debugging" href="/langgraph-guide/python/chapter-06-streaming-and-debugging/" description="Stream modes, type-safe v2 API, visualization · 15 min" />
+  <LinkCard title="7 · Human-in-the-loop" href="/langgraph-guide/python/chapter-07-human-in-the-loop/" description="Interrupts, multi-stage approval, interactive debug · 25 min" />
+  <LinkCard title="8 · Middleware (hooks)" href="/langgraph-guide/python/chapter-08-middleware-hooks/" description="Pre/post model hooks, rate limiting, guardrails · 20 min" />
+  <LinkCard title="9 · Advanced patterns" href="/langgraph-guide/python/chapter-09-advanced-patterns/" description="ReAct, ToT, reflection, caching, deferred nodes, Command tool · 40 min" />
+  <LinkCard title="10 · Production & troubleshooting" href="/langgraph-guide/python/chapter-10-production/" description="Docker, CLI, SDK, common pitfalls · 20 min" />
+</CardGrid>
+
+## Jump to a topic
+
+Need one specific concept? Land directly on the chapter that owns it.
+
+<CardGrid>
+  <LinkCard title="State graph" href="/langgraph-guide/python/chapter-01-setup-and-core-concepts/#core-concepts" />
+  <LinkCard title="Conditional routing" href="/langgraph-guide/python/chapter-02-simple-agents/#example-2-conditional-routing" />
+  <LinkCard title="Supervisor pattern" href="/langgraph-guide/python/chapter-03-multi-agent/#example-1-supervisor-pattern" />
+  <LinkCard title="Parallel workers" href="/langgraph-guide/python/chapter-03-multi-agent/#example-2-parallel-worker-pattern" />
+  <LinkCard title="ToolNode" href="/langgraph-guide/python/chapter-04-tools/#example-1-basic-tool-node" />
+  <LinkCard title="Checkpointers" href="/langgraph-guide/python/chapter-05-memory/#short-term-memory-checkpointers" />
+  <LinkCard title="Store (long-term memory)" href="/langgraph-guide/python/chapter-05-memory/#long-term-memory-store" />
+  <LinkCard title="Type-safe v2 API" href="/langgraph-guide/python/chapter-06-streaming-and-debugging/#type-safe-v2-api-v11x" />
+  <LinkCard title="Interrupts (HITL)" href="/langgraph-guide/python/chapter-07-human-in-the-loop/#basic-interrupts" />
+  <LinkCard title="Pre/post model hooks" href="/langgraph-guide/python/chapter-08-middleware-hooks/" />
+  <LinkCard title="ReAct pattern" href="/langgraph-guide/python/chapter-09-advanced-patterns/#pattern-1-react-reasoning--acting" />
+  <LinkCard title="Functional API" href="/langgraph-guide/python/chapter-09-advanced-patterns/#functional-api-langgraph-10" />
+</CardGrid>
+
+## Reference
+
+<CardGrid>
+  <LinkCard title="Single-page comprehensive guide" href="/langgraph-guide/python/langgraph_comprehensive_guide/" description="All chapters in one long page — best for search and printing." />
+  <LinkCard title="Recipes" href="/langgraph-guide/python/langgraph_recipes/" description="RAG, support routing, research agent, doc pipelines, long-term memory conversations." />
+  <LinkCard title="Diagrams" href="/langgraph-guide/python/langgraph_diagrams/" description="20+ Mermaid architecture diagrams." />
+  <LinkCard title="Production guide" href="/langgraph-guide/python/langgraph_production_guide/" description="Deployment, scaling, monitoring, disaster recovery." />
+  <LinkCard title="Advanced error recovery" href="/langgraph-guide/python/langgraph_advanced_error_recovery/" />
+  <LinkCard title="Observability" href="/langgraph-guide/python/langgraph_observability_python/" />
+  <LinkCard title="Performance optimization" href="/langgraph-guide/python/langgraph_performance_optimization/" />
+  <LinkCard title="Streaming server (FastAPI)" href="/langgraph-guide/python/langgraph_streaming_server_fastapi/" />
+</CardGrid>
+
+## What's new in v1.1.8 (April 2026)
+
+- **Type-safe streaming (v2 API)** — opt-in with `version="v2"`; unified `StreamPart` output with `type`, `ns`, `data` keys.
+- **Type-safe invoke (v2 API)** — returns `GraphOutput` with `.value` and `.interrupts`.
+- **Pydantic/dataclass coercion** — `invoke()` auto-coerces declared types.
+- **Python 3.14 support** added; **Python 3.9 dropped**.
+- **Time-travel fixes** — replays no longer reuse stale `RESUME` values with interrupts and subgraphs.
+
+<Aside type="caution" title="Breaking changes since v1.0">
+  - Python 3.9 is no longer supported (minimum 3.10).
+  - `langgraph-prebuilt==1.0.9` introduced an `ImportError` for `ServerInfo` when paired with older `langgraph`. Pin both packages together.
+</Aside>
+
+## Install, minimal example
+
+```python
+from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import InMemorySaver
+from typing_extensions import TypedDict
+
+class State(TypedDict):
+    message: str
+    response: str
+
+def process(state: State):
+    return {"response": f"Processed: {state['message']}"}
+
+builder = StateGraph(State)
+builder.add_node("process", process)
+builder.add_edge(START, "process")
+builder.add_edge("process", END)
+
+graph = builder.compile(checkpointer=InMemorySaver())
+
+result = graph.invoke(
+    {"message": "Hello"},
+    config={"configurable": {"thread_id": "user-1"}},
+)
+print(result)
+```
+
+Ready for the full walk-through? **[Start Chapter 1 →](/langgraph-guide/python/chapter-01-setup-and-core-concepts/)**
+
+---
+
+## Revision history
+
+| Date | Version | Changes |
+|------|---------|---------|
+| 2026-04-21 | 1.1.8 | Index redesigned into Zero → Hero chaptered tutorial + Jump-to-topic grid; duplicated sections removed. |
+| 2026-04-20 | 1.1.8 | Version pin updated to 1.1.8; frameworks.ts metadata aligned. |
+| April 16, 2026 | 1.1.6 | Python 3.9 dropped; type-safe v2 streaming/invoke API; Pydantic/dataclass coercion; Python 3.14 support; time-travel fixes. |
+| November 2025 | 1.0.3 | Node caching; deferred nodes; pre/post model hooks; cross-thread memory; Python 3.13 support. |
