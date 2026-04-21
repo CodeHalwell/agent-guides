@@ -35,8 +35,11 @@ The October 2025 release includes comprehensive OpenTelemetry (OTel) instrumenta
 All agent operations are automatically instrumented with OpenTelemetry spans:
 
 ```python
-from agent_framework import ChatAgent
+import os
+from agent_framework import Agent
+from agent_framework.foundry import FoundryChatClient
 from agent_framework.telemetry import configure_telemetry
+from azure.identity.aio import DefaultAzureCredential
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
@@ -75,9 +78,9 @@ async def traced_agent_execution():
     setup_telemetry()
 
     async with DefaultAzureCredential() as credential:
-        async with AzureAIAgentClient(async_credential=credential) as client:
-            agent = ChatAgent(
-                chat_client=client,
+        async with FoundryChatClient(credential=credential) as client:
+            agent = Agent(
+                client=client,
                 instructions="You are helpful."
             )
 
@@ -94,7 +97,7 @@ async def traced_agent_execution():
 
 ```python
 from opentelemetry import trace, metrics
-from agent_framework import ChatAgent
+from agent_framework import Agent
 
 tracer = trace.get_tracer(__name__)
 meter = metrics.get_meter(__name__)
@@ -123,7 +126,7 @@ async def execute_with_custom_telemetry():
         start_time = time.time()
 
         # Execute agent
-        agent = ChatAgent(instructions="You help customers.")
+        agent = Agent(instructions="You help customers.")
         response = await agent.run("What's my order status?")
 
         # Record metrics
@@ -195,7 +198,7 @@ public class TelemetryConfiguration
     {
         ConfigureOpenTelemetry();
 
-        var agent = new ChatAgent(
+        var agent = new ChatClientAgent(
             instructions: "You are a helpful assistant."
         );
 
@@ -214,7 +217,7 @@ public class TelemetryConfiguration
 
 ```python
 from azure.monitor.opentelemetry import configure_azure_monitor
-from agent_framework import ChatAgent
+from agent_framework import Agent
 
 # Configure Azure Monitor
 configure_azure_monitor(
@@ -228,7 +231,7 @@ configure_azure_monitor(
 )
 
 # All agent operations automatically flow to Azure Monitor
-agent = ChatAgent(instructions="You are helpful.")
+agent = Agent(instructions="You are helpful.")
 response = await agent.run("Query")
 
 # View in Azure Monitor:
@@ -255,14 +258,14 @@ async def multi_agent_traced_workflow():
         TraceContextTextMapPropagator().inject(context)
 
         # Agent 1 - with propagated context
-        agent1 = ChatAgent(instructions="You research.")
+        agent1 = Agent(instructions="You research.")
         research = await agent1.run(
             "Research AI trends",
             trace_context=context
         )
 
         # Agent 2 - continues the trace
-        agent2 = ChatAgent(instructions="You analyze.")
+        agent2 = Agent(instructions="You analyze.")
         analysis = await agent2.run(
             f"Analyze: {research.text}",
             trace_context=context
@@ -282,7 +285,7 @@ Azure AI Content Safety provides real-time content moderation for harmful conten
 ### Enabling Content Safety
 
 ```python
-from agent_framework import ChatAgent
+from agent_framework import Agent
 from agent_framework.safety import ContentSafetyConfig
 from azure.ai.contentsafety import ContentSafetyClient
 from azure.identity import DefaultAzureCredential
@@ -306,7 +309,7 @@ async def create_safe_agent():
     )
 
     # Create agent with Content Safety
-    agent = ChatAgent(
+    agent = Agent(
         instructions="You are a customer support agent.",
         content_safety=content_safety_config
     )
@@ -389,7 +392,7 @@ using Microsoft.Agents.AI.Safety;
 
 public class SafeAgentConfiguration
 {
-    public static ChatAgent CreateSafeAgent()
+    public static ChatClientAgent CreateSafeAgent()
     {
         // Configure Content Safety
         var contentSafetyConfig = new ContentSafetyConfig
@@ -409,7 +412,7 @@ public class SafeAgentConfiguration
         };
 
         // Create agent
-        var agent = new ChatAgent(
+        var agent = new ChatClientAgent(
             instructions: "You are a helpful assistant.",
             contentSafety: contentSafetyConfig
         );
@@ -456,7 +459,7 @@ pii_config = PIIDetectionConfig(
     redaction_pattern="[REDACTED]"
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="You help with customer data.",
     pii_detection=pii_config
 )
@@ -474,20 +477,20 @@ response = await agent.run("My email is user@example.com and my SSN is 123-45-67
 
 ```python
 from azure.identity.aio import ManagedIdentityCredential
-from agent_framework import ChatAgent
-from agent_framework.azure import AzureAIAgentClient
+from agent_framework import Agent
+from agent_framework.foundry import FoundryChatClient
 
 async def production_agent_with_managed_identity():
     """Production agent using Managed Identity"""
 
     # Use system-assigned managed identity
     async with ManagedIdentityCredential() as credential:
-        async with AzureAIAgentClient(
+        async with FoundryChatClient(
             endpoint=os.getenv("AZURE_AI_ENDPOINT"),
-            async_credential=credential
+            credential=credential
         ) as client:
-            agent = ChatAgent(
-                chat_client=client,
+            agent = Agent(
+                client=client,
                 instructions="Production agent"
             )
 
@@ -519,7 +522,7 @@ public class ProductionAgent
             credential: credential
         );
 
-        var agent = new ChatAgent(
+        var agent = new ChatClientAgent(
             chatClient: agentClient,
             instructions: "Production agent"
         );
@@ -534,14 +537,14 @@ public class ProductionAgent
 
 ```python
 from azure.identity.aio import DefaultAzureCredential
-from agent_framework import ChatAgent
+from agent_framework import Agent
 
 async def kubernetes_agent_with_workload_identity():
     """Agent running in AKS with Workload Identity"""
 
     # DefaultAzureCredential automatically detects workload identity
     async with DefaultAzureCredential() as credential:
-        agent = ChatAgent(
+        agent = Agent(
             instructions="Kubernetes agent",
             credential=credential
         )
@@ -602,7 +605,7 @@ async def user_delegated_agent():
     # )
 
     async with credential:
-        agent = ChatAgent(
+        agent = Agent(
             instructions="User-scoped agent",
             credential=credential
         )
@@ -641,7 +644,7 @@ async def multi_tenant_agent_system():
     async def create_tenant_agent(tenant_id: str):
         credential = auth_config.get_credential_for_tenant(tenant_id)
 
-        agent = ChatAgent(
+        agent = Agent(
             instructions=f"Agent for {tenant_id}",
             credential=credential,
             tenant_isolation=True
@@ -681,7 +684,7 @@ hipaa_config = HIPAAConfig(
     business_associate_agreement=True
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="You handle healthcare data.",
     compliance=hipaa_config
 )
@@ -712,7 +715,7 @@ gdpr_config = GDPRConfig(
     privacy_by_design=True
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="You handle EU customer data.",
     compliance=gdpr_config
 )
@@ -745,7 +748,7 @@ financial_config = FinancialServicesConfig(
     }
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="You handle payment processing.",
     compliance=financial_config
 )
@@ -773,7 +776,7 @@ fedramp_config = FedRAMPConfig(
     us_cloud_regions_only=True
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="You handle government data.",
     compliance=fedramp_config,
     cloud_regions=["usgovvirginia", "usgovarizona"]
@@ -812,7 +815,7 @@ data_access_policy = Policy(
 policy_engine.add_policy(data_access_policy)
 
 # Apply policies to agent
-agent = ChatAgent(
+agent = Agent(
     instructions="You handle sensitive data.",
     policy_engine=policy_engine
 )
@@ -850,7 +853,7 @@ cost_config = CostManagementConfig(
     usage_tracking=True
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="Cost-controlled agent",
     cost_management=cost_config
 )
@@ -885,7 +888,7 @@ model_governance = ModelGovernanceConfig(
     }
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="Governed agent",
     model_governance=model_governance
 )
@@ -916,7 +919,7 @@ encryption_config = EncryptionConfig(
     encrypt_logs=True
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="Encrypted agent",
     encryption=encryption_config
 )
@@ -947,7 +950,7 @@ network_security = NetworkSecurityConfig(
     }
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="Network-secured agent",
     network_security=network_security
 )
@@ -979,7 +982,7 @@ zero_trust_config = ZeroTrustConfig(
     }
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="Zero-trust agent",
     zero_trust=zero_trust_config
 )
@@ -1029,7 +1032,7 @@ audit_config = AuditConfig(
     real_time_monitoring=True
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="Audited agent",
     audit=audit_config
 )
@@ -1065,7 +1068,7 @@ siem_config = SIEMIntegration(
     ]
 )
 
-agent = ChatAgent(
+agent = Agent(
     instructions="SIEM-integrated agent",
     siem=siem_config
 )

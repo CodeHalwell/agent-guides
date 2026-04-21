@@ -14,6 +14,15 @@ Latest: 1.1.0
 
 ---
 
+> **Errata (April 2026).** Earlier drafts of this page documented class names and factory patterns that do not match the installed `Microsoft.Agents.AI` package:
+>
+> - `ChatAgent` → the real class is **`ChatClientAgent`** in namespace `Microsoft.Agents.AI`. This page has been swept for the rename.
+> - `AgentFactory.CreateAgent<ChatAgent>(options)` → the canonical pattern per Microsoft Learn is to construct directly: `var agent = new ChatClientAgent(chatClient, instructions: "You are a helpful assistant.");` or via the extension `chatClient.CreateAIAgent(...)` from `Microsoft.Agents.AI.OpenAI` / `Microsoft.Agents.AI.Foundry` packages. The `AgentFactory.CreateAgent<T>()` examples below survive in the recipes but are **not** drawn from the real SDK surface — treat them as illustrative until rewritten.
+>
+> See the [ChatClientAgent constructor docs](https://learn.microsoft.com/dotnet/api/microsoft.agents.ai.chatclientagent.-ctor) for the authoritative signature.
+
+---
+
 ## Introduction
 
 Welcome to the comprehensive technical guide for the Microsoft Agent Framework for .NET. This guide is designed for .NET developers looking to build, orchestrate, and deploy sophisticated AI agents and multi-agent systems.
@@ -60,7 +69,7 @@ The framework is built on a layered architecture that promotes separation of con
 | (Workflows, Coordination)         |
 +-----------------------------------+
 |      Agent Abstraction Layer      |
-| (AIAgent, ChatAgent, State)       |
+| (AIAgent, ChatClientAgent, State)       |
 +-----------------------------------+
 |      Core Components Layer          |
 | (Tools, Memory, LLM Providers)    |
@@ -170,24 +179,28 @@ Console.WriteLine(response);
 // Your custom agent class
 public class MySimpleAgent
 {
-    private readonly AgentFactory _agentFactory;
+    private readonly IChatClient _chatClient;
 
-    public MySimpleAgent(AgentFactory agentFactory)
+    public MySimpleAgent(IChatClient chatClient)
     {
-        _agentFactory = agentFactory;
+        _chatClient = chatClient;
     }
 
     public async Task<string> RunAsync(string input)
     {
-        var agent = _agentFactory.CreateAgent<ChatAgent>();
-        var thread = agent.CreateThread();
-        var response = await thread.InvokeAsync(input);
-        return response.GetContent<string>();
+        // Canonical MAF .NET pattern: construct ChatClientAgent directly.
+        // See https://learn.microsoft.com/dotnet/api/microsoft.agents.ai.chatclientagent
+        var agent = new ChatClientAgent(
+            _chatClient,
+            instructions: "You are a helpful AI assistant for .NET developers.");
+
+        var response = await agent.RunAsync(input);
+        return response.Text;
     }
 }
 ```
 
-This setup provides a clean and maintainable structure for building complex agentic applications.
+This setup provides a clean and maintainable structure for building complex agentic applications. The `AgentFactory` / `CreateAgent<T>()` pattern you may see in legacy internal tooling is **not** part of the public `Microsoft.Agents.AI` surface — direct `new ChatClientAgent(...)` construction (or the `chatClient.CreateAIAgent(...)` extension from `Microsoft.Agents.AI.OpenAI` / `.Foundry` packages) is the documented API.
 
 ---
 
@@ -195,48 +208,49 @@ This setup provides a clean and maintainable structure for building complex agen
 
 This section covers the creation and management of individual agents.
 
-### Creating Basic Agents: `AIAgent` vs. `ChatAgent`
+### Creating Basic Agents: `AIAgent` vs. `ChatClientAgent`
 
 The framework provides two primary agent types:
 
 -   **`AIAgent`**: A stateless agent ideal for single-turn, request/response interactions. It does not maintain conversation history automatically.
--   **`ChatAgent`**: A stateful agent that automatically manages conversation history within a `Thread`. It's the most common choice for building conversational experiences.
+-   **`ChatClientAgent`**: A stateful agent that automatically manages conversation history within a `Thread`. It's the most common choice for building conversational experiences.
 
-**Example: Creating a `ChatAgent`**
+**Example: Creating a `ChatClientAgent`**
 
 ```csharp
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using System.Threading.Tasks;
 
 public class ConversationalAgent
 {
-    private readonly ChatAgent _agent;
+    private readonly ChatClientAgent _agent;
 
-    // AgentFactory is injected via DI
-    public ConversationalAgent(AgentFactory factory)
+    // Inject an IChatClient (Azure OpenAI, OpenAI, Ollama, etc.)
+    // via DI, then construct ChatClientAgent directly.
+    public ConversationalAgent(IChatClient chatClient)
     {
-        // Define the agent's role or system prompt
-        var options = new AgentOptions
-        {
-            Instructions = "You are a helpful AI assistant for .NET developers."
-        };
-        _agent = factory.CreateAgent<ChatAgent>(options);
+        _agent = new ChatClientAgent(
+            chatClient,
+            instructions: "You are a helpful AI assistant for .NET developers.");
     }
 
     public async Task StartConversation()
     {
-        // Each conversation is a separate thread
-        var thread = _agent.CreateThread();
+        // Each conversation gets its own thread
+        var thread = _agent.GetNewThread();
 
-        var response1 = await thread.InvokeAsync("What is the latest version of .NET?");
-        Console.WriteLine($"Assistant: {response1.GetContent<string>()}");
+        var response1 = await _agent.RunAsync("What is the latest version of .NET?", thread);
+        Console.WriteLine($"Assistant: {response1.Text}");
 
-        // The agent remembers the previous turn
-        var response2 = await thread.InvokeAsync("What were the key features in that release?");
-        Console.WriteLine($"Assistant: {response2.GetContent<string>()}");
+        // The thread carries history forward on the next turn
+        var response2 = await _agent.RunAsync("What were the key features in that release?", thread);
+        Console.WriteLine($"Assistant: {response2.Text}");
     }
 }
 ```
+
+> The `AgentFactory.CreateAgent<T>()` pattern from earlier drafts is not part of the public `Microsoft.Agents.AI` surface. Construct `ChatClientAgent` directly, or use the `chatClient.CreateAIAgent(...)` extension method shipped with `Microsoft.Agents.AI.OpenAI` / `Microsoft.Agents.AI.Foundry`.
 
 ### Agent Lifecycle Management
 
@@ -248,7 +262,7 @@ Agents execute tasks asynchronously. The `InvokeAsync` method is the primary way
 
 ### Testing Individual Agents
 
-Testing is crucial. You can mock the `AgentFactory` and `ChatAgent` to test your application logic without making live LLM calls.
+Testing is crucial. You can mock the `AgentFactory` and `ChatClientAgent` to test your application logic without making live LLM calls.
 
 ```csharp
 // In your test project
@@ -269,11 +283,11 @@ public class AgentTests
         mockThread.Setup(t => t.InvokeAsync(It.IsAny<object>(), default))
                   .ReturnsAsync(mockResponse);
 
-        var mockAgent = new Mock<ChatAgent>();
+        var mockAgent = new Mock<ChatClientAgent>();
         mockAgent.Setup(a => a.CreateThread()).Returns(mockThread.Object);
 
         var mockFactory = new Mock<AgentFactory>();
-        mockFactory.Setup(f => f.CreateAgent<ChatAgent>(It.IsAny<AgentOptions>()))
+        mockFactory.Setup(f => f.CreateAgent<ChatClientAgent>(It.IsAny<AgentOptions>()))
                    .Returns(mockAgent.Object);
 
         var myConversationalAgent = new ConversationalAgent(mockFactory.Object);
@@ -316,15 +330,15 @@ Agents communicate through a shared `AgentThread`. One agent can add a message t
 ```csharp
 public class ResearchWorkflow
 {
-    private readonly ChatAgent _researcher;
-    private readonly ChatAgent _writer;
+    private readonly ChatClientAgent _researcher;
+    private readonly ChatClientAgent _writer;
 
     public ResearchWorkflow(AgentFactory factory)
     {
-        _researcher = factory.CreateAgent<ChatAgent>(new() { 
+        _researcher = factory.CreateAgent<ChatClientAgent>(new() { 
             Instructions = "You are a research assistant. Find information on a topic." 
         });
-        _writer = factory.CreateAgent<ChatAgent>(new() { 
+        _writer = factory.CreateAgent<ChatClientAgent>(new() { 
             Instructions = "You are a content writer. Write a summary based on research." 
         });
     }
@@ -368,8 +382,8 @@ public class ExplicitWorkflow
     public async Task<string> RunAsync(string topic)
     {
         // Define agents as workflow steps
-        var researcher = _factory.CreateAgent<ChatAgent>(new() { Instructions = "You are a researcher." });
-        var writer = _factory.CreateAgent<ChatAgent>(new() { Instructions = "You are a writer." });
+        var researcher = _factory.CreateAgent<ChatClientAgent>(new() { Instructions = "You are a researcher." });
+        var writer = _factory.CreateAgent<ChatClientAgent>(new() { Instructions = "You are a writer." });
 
         // Create a workflow
         var workflow = new Workflow();
@@ -431,7 +445,7 @@ var agentOptions = new AgentOptions
     Tools = { tool }
 };
 
-var agent = factory.CreateAgent<ChatAgent>(agentOptions);
+var agent = factory.CreateAgent<ChatClientAgent>(agentOptions);
 var thread = agent.CreateThread();
 
 var response = await thread.InvokeAsync("What's the weather like in Seattle today?");
@@ -498,11 +512,11 @@ You can instruct an agent to respond with a specific structure by passing the ty
 ```csharp
 public class DataExtractionAgent
 {
-    private readonly ChatAgent _agent;
+    private readonly ChatClientAgent _agent;
 
     public DataExtractionAgent(AgentFactory factory)
     {
-        _agent = factory.CreateAgent<ChatAgent>(new() {
+        _agent = factory.CreateAgent<ChatClientAgent>(new() {
             Instructions = "You are an expert at extracting structured data from text."
         });
     }
@@ -579,7 +593,7 @@ Beyond simple request/response, the framework enables advanced agentic patterns 
 By providing a high-level goal, you can have an agent create and execute a multi-step plan.
 
 ```csharp
-var plannerAgent = factory.CreateAgent<ChatAgent>(new() {
+var plannerAgent = factory.CreateAgent<ChatClientAgent>(new() {
     Instructions = "You are a master planner. Break down complex goals into simple, executable steps."
 });
 
@@ -591,7 +605,7 @@ var planResponse = await thread.InvokeAsync(goal);
 Console.WriteLine($"The Plan:\n{planResponse.GetContent<string>()}");
 
 // You can then have another agent (or the same one) execute the plan step-by-step
-var executorAgent = factory.CreateAgent<ChatAgent>(new() { Tools = { ... } });
+var executorAgent = factory.CreateAgent<ChatClientAgent>(new() { Tools = { ... } });
 var executionResponse = await executorAgent.InvokeAsync(thread, "Execute the first step of the plan.");
 ```
 
@@ -608,8 +622,8 @@ In a multi-agent system, you can create a "supervisor" or "router" agent that de
 An agent can be prompted to review and critique its own work, leading to higher-quality outputs.
 
 ```csharp
-var writerAgent = factory.CreateAgent<ChatAgent>(new() { Instructions = "You are a blog post writer." });
-var criticAgent = factory.CreateAgent<ChatAgent>(new() { Instructions = "You are a critical editor. Review the following text and provide feedback for improvement." });
+var writerAgent = factory.CreateAgent<ChatClientAgent>(new() { Instructions = "You are a blog post writer." });
+var criticAgent = factory.CreateAgent<ChatClientAgent>(new() { Instructions = "You are a critical editor. Review the following text and provide feedback for improvement." });
 
 var topic = "The Future of AI in .NET";
 var thread = writerAgent.CreateThread();
@@ -701,7 +715,7 @@ public class KnowledgeAgent
 }
 
 // 3. The agent can now retrieve this information during conversations
-var ragAgent = factory.CreateAgent<ChatAgent>(new() {
+var ragAgent = factory.CreateAgent<ChatClientAgent>(new() {
     Instructions = "Answer questions based on the knowledge provided to you."
 });
 
@@ -737,7 +751,7 @@ public class MultiTenantService
 
     public async Task<string> ProcessUserRequestAsync(string userId, string userInput)
     {
-        var agent = _agentFactory.CreateAgent<ChatAgent>();
+        var agent = _agentFactory.CreateAgent<ChatClientAgent>();
 
         // Each user gets their own thread, ensuring conversation isolation.
         // The thread ID is a combination of agent ID and a unique user identifier.

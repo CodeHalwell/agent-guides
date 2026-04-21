@@ -7,6 +7,8 @@ language: python
 
 # Microsoft Agent Framework Python - Recipes and Code Patterns
 
+> **Errata (April 2026).** Many recipes below import from a pseudo-`microsoft.agents.ai` namespace and use an `AgentFactory` pattern that does **not** exist in the installed Python SDK. The real package is `agent_framework` (underscores); the primary class is `Agent`; chat clients come from `agent_framework.foundry`, `agent_framework.openai`, etc. See the full reconciliation at the top of the [comprehensive guide](./microsoft_agent_framework_python_comprehensive_guide/). When you lift a recipe below, substitute the correct imports — the patterns themselves are still instructive even where the symbol names are stale.
+
 This document provides a collection of practical, copy-paste-ready Python recipes for building common agentic patterns with the Microsoft Agent Framework for Python.
 
 **Target Platform:** Python 3.10+
@@ -20,39 +22,39 @@ These recipes are for developers new to the framework and cover fundamental conc
 
 ### Recipe 1: Simple Chat Agent (Python)
 
-This is the "Hello, World!" of the Agent Framework—a basic conversational agent that maintains history.
+This is the "Hello, World!" of the Agent Framework — a basic conversational agent that maintains history across turns. Rewritten against the real `agent_framework` package (previous drafts used a pseudo-`microsoft.agents.ai.AgentFactory` API that does not exist).
 
 ```python
 # simple_chat_agent.py
 import asyncio
-from microsoft.agents.ai import AgentFactory, ChatAgent
+from agent_framework import Agent
+from agent_framework.openai import OpenAIChatClient
 
 async def run_interactive():
-    factory = AgentFactory()
-    
-    # Create the agent
-    agent = await factory.create_agent(
-        ChatAgent,
-        instructions="You are a friendly AI assistant. Keep your responses concise."
+    # Construct the agent directly with a chat client.
+    # Swap OpenAIChatClient for FoundryChatClient / AnthropicClient / etc.
+    agent = Agent(
+        client=OpenAIChatClient(),  # reads OPENAI_API_KEY from env
+        instructions="You are a friendly AI assistant. Keep your responses concise.",
     )
 
-    print("Chat Agent Initialized. Type 'exit' to quit.")
-    
-    # Create a thread for the conversation
-    thread = await agent.create_thread()
+    # Create a session so follow-up turns see prior history.
+    session = agent.create_session()
 
+    print("Chat Agent Initialized. Type 'exit' to quit.")
     while True:
         user_input = input("You: ")
-        if user_input.lower() in ('exit', 'quit'):
+        if user_input.lower() in ("exit", "quit"):
             break
 
-        # Invoke the agent
-        response = await thread.invoke(user_input)
-        print(f"Assistant: {response.get_content()}")
+        response = await agent.run(user_input, session=session)
+        print(f"Assistant: {response.text}")
 
 if __name__ == "__main__":
     asyncio.run(run_interactive())
 ```
+
+> **Note:** recipes 2 through 11 below still use the pseudo-`microsoft.agents.ai` / `AgentFactory` pattern from an earlier draft. Apply the same translation shown here — import from `agent_framework`, construct `Agent(client=..., instructions=..., tools=[...])` directly, use `agent.create_session()` for multi-turn — until those recipes are individually rewritten. The [A2A](../microsoft_agent_framework_a2a_protocol/), [Workflows](../microsoft_agent_framework_graphs_declarative/) and [2025 features](./microsoft_agent_framework_python_2025_features/) pages already use the real API end-to-end.
 
 ### Recipe 2: Agent with a Single Tool
 
@@ -62,11 +64,11 @@ This recipe shows how to add a simple tool to an agent, allowing it to perform a
 # agent_with_tool.py
 import asyncio
 from datetime import datetime, timezone
-from microsoft.agents.ai import AgentFactory, ChatAgent
-from microsoft.agents.ai.tool import ai_function
+from microsoft.agents.ai import AgentFactory, Agent
+from microsoft.agents.ai.tool import tool
 
 # 1. Define the tool
-@ai_function(description="Gets the current UTC date and time.")
+@tool(description="Gets the current UTC date and time.")
 def get_current_time() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
@@ -75,7 +77,7 @@ async def run_tool_agent():
 
     # 2. Create the agent and add the tool
     agent = await factory.create_agent(
-        ChatAgent,
+        Agent,
         instructions="You have a tool to get the current time. Use it when asked.",
         tools=[get_current_time]
     )
@@ -95,10 +97,10 @@ This recipe demonstrates how to handle errors within a tool gracefully.
 ```python
 # error_handling_tool.py
 import asyncio
-from microsoft.agents.ai import AgentFactory, ChatAgent
-from microsoft.agents.ai.tool import ai_function
+from microsoft.agents.ai import AgentFactory, Agent
+from microsoft.agents.ai.tool import tool
 
-@ai_function(description="Divides two numbers.")
+@tool(description="Divides two numbers.")
 def divide(numerator: float, denominator: float) -> str:
     if denominator == 0:
         # Raising an exception will pass the error message to the LLM
@@ -108,7 +110,7 @@ def divide(numerator: float, denominator: float) -> str:
 async def run_error_handling():
     factory = AgentFactory()
     agent = await factory.create_agent(
-        ChatAgent,
+        Agent,
         instructions="You are a math assistant.",
         tools=[divide]
     )
@@ -137,7 +139,7 @@ This recipe shows how to chain two agents together: a researcher and a summarize
 ```python
 # sequential_workflow.py
 import asyncio
-from microsoft.agents.ai import AgentFactory, ChatAgent
+from microsoft.agents.ai import AgentFactory, Agent
 
 class SequentialWorkflow:
     def __init__(self, factory: AgentFactory):
@@ -146,11 +148,11 @@ class SequentialWorkflow:
     async def run(self, topic: str):
         # 1. Define agents
         researcher = await self.factory.create_agent(
-            ChatAgent,
+            Agent,
             instructions="You are a world-class researcher. Find detailed information on the given topic."
         )
         summarizer = await self.factory.create_agent(
-            ChatAgent,
+            Agent,
             instructions="You are a skilled editor. Summarize the provided text into a single, concise paragraph."
         )
 
@@ -188,7 +190,7 @@ This recipe demonstrates a router agent that decides which specialist agent shou
 ```python
 # router_agent.py
 import asyncio
-from microsoft.agents.ai import AgentFactory, ChatAgent
+from microsoft.agents.ai import AgentFactory, Agent
 
 class RouterWorkflow:
     def __init__(self, factory: AgentFactory):
@@ -199,15 +201,15 @@ class RouterWorkflow:
 
     async def initialize(self):
         self.router = await self.factory.create_agent(
-            ChatAgent,
+            Agent,
             instructions="You are a request router. Determine if a query is 'Billing' or 'Technical'. Respond with only one word."
         )
         self.billing = await self.factory.create_agent(
-            ChatAgent, 
+            Agent, 
             instructions="You are a billing support specialist."
         )
         self.tech = await self.factory.create_agent(
-            ChatAgent, 
+            Agent, 
             instructions="You are a technical support specialist."
         )
 
@@ -252,7 +254,7 @@ This recipe shows how to configure an agent to use Azure AI Search for long-term
 import asyncio
 import os
 from azure.identity.aio import DefaultAzureCredential
-from microsoft.agents.ai import AgentFactory, ChatAgent
+from microsoft.agents.ai import AgentFactory, Agent
 from microsoft.agents.ai.memory.azure import AzureAISearchMemory
 
 async def run_memory_agent():
@@ -271,7 +273,7 @@ async def run_memory_agent():
     # This example assumes a RAG-enabled agent pattern
     
     agent = await factory.create_agent(
-        ChatAgent,
+        Agent,
         instructions="You answer questions based on your knowledge base.",
         memory=memory # Hypothetical direct integration or via tools
     )
@@ -301,7 +303,7 @@ This builds on the memory recipe to create a full RAG agent that can ingest and 
 ```python
 # rag_agent.py
 from typing import Annotated
-from microsoft.agents.ai.tool import ai_function
+from microsoft.agents.ai.tool import tool
 
 class KnowledgeBase:
     def __init__(self):
@@ -318,14 +320,14 @@ class KnowledgeBase:
 kb = KnowledgeBase()
 kb.add_doc("doc1", "Microsoft Agent Framework unifies Semantic Kernel and AutoGen.")
 
-@ai_function(description="Search the knowledge base for information.")
+@tool(description="Search the knowledge base for information.")
 def search_knowledge(query: Annotated[str, "The search query"]) -> str:
     return kb.search(query)
 
 async def run_rag():
     factory = AgentFactory()
     agent = await factory.create_agent(
-        ChatAgent,
+        Agent,
         instructions="Use the search_knowledge tool to answer questions.",
         tools=[search_knowledge]
     )
@@ -342,16 +344,16 @@ This recipe uses the `Workflow` engine for a more robust and explicit multi-agen
 ```python
 # workflow_orchestration.py
 import asyncio
-from microsoft.agents.ai import AgentFactory, ChatAgent
+from microsoft.agents.ai import AgentFactory, Agent
 from microsoft.agents.ai.orchestration import Workflow
 
 async def run_workflow(topic: str):
     factory = AgentFactory()
     
     # 1. Define agents
-    researcher = await factory.create_agent(ChatAgent, instructions="You are a researcher.")
-    analyst = await factory.create_agent(ChatAgent, instructions="You are a data analyst.")
-    writer = await factory.create_agent(ChatAgent, instructions="You are a technical writer.")
+    researcher = await factory.create_agent(Agent, instructions="You are a researcher.")
+    analyst = await factory.create_agent(Agent, instructions="You are a data analyst.")
+    writer = await factory.create_agent(Agent, instructions="You are a technical writer.")
 
     # 2. Create workflow
     workflow = Workflow("ResearchPaper")
@@ -387,7 +389,7 @@ This recipe shows how to create a web API endpoint to interact with an agent.
 # main.py
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from microsoft.agents.ai import AgentFactory, ChatAgent
+from microsoft.agents.ai import AgentFactory, Agent
 import asyncio
 
 app = FastAPI()
@@ -401,7 +403,7 @@ class ChatRequest(BaseModel):
 async def startup():
     global agent
     agent = await factory.create_agent(
-        ChatAgent,
+        Agent,
         instructions="You are a helpful API assistant."
     )
 
@@ -425,7 +427,7 @@ This recipe demonstrates how to trigger an agent workflow from an Azure Queue St
 # function_app.py
 import azure.functions as func
 import logging
-from microsoft.agents.ai import AgentFactory, ChatAgent
+from microsoft.agents.ai import AgentFactory, Agent
 
 app = func.FunctionApp()
 
@@ -437,7 +439,7 @@ async def process_queue_item(msg: func.QueueMessage):
     
     # Initialize agent (in production, use a singleton or cached factory)
     factory = AgentFactory()
-    agent = await factory.create_agent(ChatAgent, instructions="Process the task.")
+    agent = await factory.create_agent(Agent, instructions="Process the task.")
     
     thread = await agent.create_thread()
     response = await thread.invoke(user_query)
@@ -458,11 +460,11 @@ Stream the agent's thoughts and tool calls in real-time to understand its decisi
 ```python
 # debug_streaming.py
 import asyncio
-from microsoft.agents.ai import AgentFactory, ChatAgent
+from microsoft.agents.ai import AgentFactory, Agent
 
 async def debug_stream():
     factory = AgentFactory()
-    agent = await factory.create_agent(ChatAgent, instructions="Helpful assistant.")
+    agent = await factory.create_agent(Agent, instructions="Helpful assistant.")
     thread = await agent.create_thread()
 
     async for message in thread.stream("Tell me a joke."):
