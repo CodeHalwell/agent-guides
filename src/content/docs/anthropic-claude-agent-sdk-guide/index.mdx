@@ -19,7 +19,7 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
     ```
   </Card>
   <Card title="Version" icon="information">
-    **v0.1.63** · April 2026 · Python 3.10+
+    **v0.1.64** · April 2026 · Python 3.10+
   </Card>
   <Card title="Best for" icon="puzzle">
     Claude-exclusive apps, Computer Use, MCP-heavy workflows, durable sessions.
@@ -83,20 +83,39 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
 
 ## Install, minimal example
 
+The SDK offers two entry points — `query()` for one-shot calls and `ClaudeSDKClient` for bidirectional sessions. **There is no `Agent` class; an earlier draft of this page documented one that doesn't exist.**
+
+### One-shot
+
 ```python
-from anthropic import Anthropic
-from claude_agent_sdk import Agent
+import asyncio
+from claude_agent_sdk import query, ClaudeAgentOptions
 
-client = Anthropic()
+async def main():
+    options = ClaudeAgentOptions(
+        model="claude-3-5-sonnet-latest",
+        system_prompt="You are a helpful assistant.",
+    )
+    async for message in query(prompt="What is 15 + 27?", options=options):
+        print(message)
 
-agent = Agent(
-    client=client,
-    model="claude-3-5-sonnet-latest",
-    system="You are a helpful assistant.",
-)
+asyncio.run(main())
+```
 
-response = agent.run("What is 15 + 27?")
-print(response.content)
+### Interactive session
+
+```python
+import asyncio
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+
+async def main():
+    options = ClaudeAgentOptions(system_prompt="You are a helpful assistant.")
+    async with ClaudeSDKClient(options=options) as client:
+        await client.query("What is 15 + 27?")
+        async for message in client.receive_response():
+            print(message)
+
+asyncio.run(main())
 ```
 
 Ready? **[Start Zero → Hero Step 1 →](./anthropic_claude_agent_sdk_comprehensive_guide/#introduction)**

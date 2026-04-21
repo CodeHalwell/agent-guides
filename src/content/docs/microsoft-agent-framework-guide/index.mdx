@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Agent Framework"
-description: "GA 1.0 unified agent SDK that merges Semantic Kernel and AutoGen — pick your language, plus cross-cutting protocol guides."
+description: "Unified agent SDK that merges Semantic Kernel and AutoGen — pick your language, plus cross-cutting protocol guides."
 framework: microsoft-agent-framework
 sidebar:
   label: "Overview"
@@ -9,11 +9,11 @@ sidebar:
 
 import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
 
-**GA 1.0 unified SDK** that consolidates Semantic Kernel's plugin/tool system and AutoGen's multi-agent orchestration. First-party service connectors, Azure-native observability, and A2A protocol support — across both .NET and Python.
+**Unified SDK that consolidates Semantic Kernel's plugin/tool system and AutoGen's multi-agent orchestration.** First-party service connectors, Azure-native observability, and A2A protocol support — across both .NET and Python. Core is stable (1.1.0 Python); several provider packages are still in public beta (A2A, declarative, copilotstudio, bedrock, anthropic, ollama, orchestrations, redis, durabletask).
 
 <CardGrid>
   <Card title="Status" icon="approve-check">
-    **GA 1.0.1** · April 2026 · LTS commitment
+    Core **1.1.0** stable · providers `1.0.0b260421` beta · April 2026
   </Card>
   <Card title="Languages" icon="puzzle">
     Python 3.10+ · .NET 8.0+
@@ -29,12 +29,12 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
   <LinkCard
     title="🐍 Python"
     href="/microsoft-agent-framework-guide/python/"
-    description="v1.0.1 · asyncio-first, Pydantic types, FastAPI integration."
+    description="Core 1.1.0 · asyncio-first, Pydantic types, FastAPI integration."
   />
   <LinkCard
     title="C# .NET"
     href="/microsoft-agent-framework-guide/dotnet/"
-    description="v1.0.1 · DI, ChatClientAgent, Azure RBAC, ASP.NET Core integration."
+    description="DI, ChatClientAgent, Azure RBAC, ASP.NET Core integration. (.NET versioning tracked separately.)"
   />
 </CardGrid>
 
