@@ -180,6 +180,7 @@ export const frameworks: Framework[] = [
     version: 'v0.1.63',
   },
   {
+    // Package: @anthropic-ai/claude-agent-sdk (distinct from the raw @anthropic-ai/sdk REST wrapper)
     id: 'claude-sdk-ts',
     name: 'Anthropic Claude SDK (TypeScript)',
     tagline: 'The TS counterpart with the same primitives.',

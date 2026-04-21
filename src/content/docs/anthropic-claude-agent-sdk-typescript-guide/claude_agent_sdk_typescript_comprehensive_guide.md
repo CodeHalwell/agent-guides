@@ -216,12 +216,9 @@ The Claude Agent SDK supports multiple Claude models, each optimised for differe
 
 ```typescript
 type SupportedModel = 
-  | 'claude-opus'
-  | 'claude-sonnet-4-5'
-  | 'claude-3-5-sonnet'
-  | 'claude-3-5-haiku'
-  | 'claude-4-turbo'  // When available
-  | 'claude-3-opus';
+  | 'claude-sonnet-4-6'        // Default recommendation
+  | 'claude-opus-4-7'          // Maximum reasoning
+  | 'claude-haiku-4-5-20251001'; // Cost-efficient
 
 interface ModelConfiguration {
   model: SupportedModel;
@@ -234,52 +231,40 @@ interface ModelConfiguration {
 
 **Model Selection Guide:**
 
-1. **Claude 4.5 Sonnet** (Recommended for most use cases):
+1. **Claude Sonnet 4.6** (`claude-sonnet-4-6`) — Recommended for most use cases:
    - Superior reasoning for complex tasks
    - Best performance on multi-step reasoning
    - Excellent tool use and planning
    - Recommended context window: Full 200K tokens
    ```typescript
    const options: ModelConfiguration = {
-     model: 'claude-sonnet-4-5',
+     model: 'claude-sonnet-4-6',
      maxTokens: 8192,
      temperature: 1.0
    };
    ```
 
-2. **Claude 3.5 Sonnet** (Balanced performance):
-   - Strong reasoning with lower latency
-   - Good for code generation and analysis
-   - Cost-effective for most workloads
+2. **Claude Opus 4.7** (`claude-opus-4-7`) — High capability:
+   - Maximum reasoning capability
+   - Best for extremely complex coordination problems
+   - Higher latency and cost
    ```typescript
    const options: ModelConfiguration = {
-     model: 'claude-3-5-sonnet',
-     maxTokens: 4096,
-     temperature: 0.8
+     model: 'claude-opus-4-7',
+     maxTokens: 8192,
+     temperature: 0.7
    };
    ```
 
-3. **Claude 3.5 Haiku** (Fast, lightweight):
+3. **Claude Haiku 4.5** (`claude-haiku-4-5-20251001`) — Cost-efficient:
    - Fastest response times
    - Lower token costs
    - Suitable for simple tasks and streaming
    ```typescript
    const options: ModelConfiguration = {
-     model: 'claude-3-5-haiku',
+     model: 'claude-haiku-4-5-20251001',
      maxTokens: 2048,
      temperature: 1.0
-   };
-   ```
-
-4. **Claude Opus** (High capability):
-   - Maximum reasoning capability
-   - Best for extremely complex problems
-   - Higher latency and cost
-   ```typescript
-   const options: ModelConfiguration = {
-     model: 'claude-opus',
-     maxTokens: 8192,
-     temperature: 0.7
    };
    ```
 

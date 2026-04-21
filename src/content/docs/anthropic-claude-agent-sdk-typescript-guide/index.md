@@ -610,11 +610,12 @@ Happy building! 🚀
 
 ---
 
-## 📋 Revision History
+## Revision History
 
-| Date | Version | Changes |
-|------|---------|---------|
-| April 18, 2026 | 0.2.113 | `getContextUsage()` with per-category breakdown; JSDoc `@param` descriptions in `@tool` for accurate JSON Schema generation; `toolUseId` and `agentId` in `ToolPermissionContext` |
-| April 16, 2026 | 0.2.110 | Package renamed to `@anthropic-ai/claude-agent-sdk`; structured outputs with Zod; MCP integration; `sandbox.failIfUnavailable` default changed; multibyte fix; import path update |
-| November 2025 | 0.1.30 | Initial TypeScript guide; streaming; tool use; multi-agent patterns |
+| Date | Framework version | Summary of changes | Reviewer |
+|------|-------------------|--------------------|----------|
+| 2026-04-21 | 0.2.113 | Updated model selection section: Claude 3.5 Sonnet/Haiku removed, Claude Sonnet 4.6 / Opus 4.7 / Haiku 4.5 substituted with canonical model IDs; `SupportedModel` type union updated. | Claude routine |
+| 2026-04-18 | 0.2.113 | `getContextUsage()` with per-category breakdown; JSDoc `@param` descriptions in `@tool` for accurate JSON Schema generation; `toolUseId` and `agentId` in `ToolPermissionContext` | Claude routine |
+| 2026-04-16 | 0.2.110 | Package renamed to `@anthropic-ai/claude-agent-sdk`; structured outputs with Zod; MCP integration; `sandbox.failIfUnavailable` default changed; multibyte fix; import path update | Claude routine |
+| 2025-11 | 0.1.30 | Initial TypeScript guide; streaming; tool use; multi-agent patterns | — |
 
