@@ -62,7 +62,7 @@ The framework's architecture is layered to promote modularity and ease of use.
 | (Workflows, GroupChatManager)     |
 +-----------------------------------+
 |      Agent Abstraction Layer      |
-| (Agent, Agent, AgentThread)   |
+| (Agent, AgentThread, BaseAgent)   |
 +-----------------------------------+
 |      Core Components Layer          |
 | (Tools, Memory, LLM Providers)    |
@@ -175,12 +175,16 @@ if __name__ == "__main__":
 
 ## Simple Agents
 
-### `Agent` vs. `Agent`
+### The single `Agent` class
 
--   **`Agent`**: A stateless agent for single-turn interactions.
--   **`Agent`**: A stateful agent that manages conversation history within a thread. This is the most common type.
+Unlike the .NET API (which distinguishes `AIAgent` as the stateless base class and `ChatClientAgent` as the concrete stateful implementation), the Python package ships a single `Agent` class in `agent_framework` that covers both scenarios. How it behaves is driven by how you invoke it:
 
-### Creating a `Agent`
+- **Stateless / single-turn** — call `await agent.run(prompt)` without a session. Each call is independent; no conversation history persists.
+- **Stateful / multi-turn** — attach a session (`session = agent.create_session()`) and pass it to each `agent.run(prompt, session=session)` call. The session's `ChatHistoryProvider` (in-memory by default) accumulates turns so follow-ups have context.
+
+For low-level subclassing, inherit from `BaseAgent` (`from agent_framework import BaseAgent`) which provides the minimal surface without the middleware and telemetry layers that `Agent` adds on top.
+
+### Creating an `Agent`
 
 ```python
 import asyncio

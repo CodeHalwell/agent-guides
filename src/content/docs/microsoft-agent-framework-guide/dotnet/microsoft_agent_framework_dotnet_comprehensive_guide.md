@@ -179,24 +179,28 @@ Console.WriteLine(response);
 // Your custom agent class
 public class MySimpleAgent
 {
-    private readonly AgentFactory _agentFactory;
+    private readonly IChatClient _chatClient;
 
-    public MySimpleAgent(AgentFactory agentFactory)
+    public MySimpleAgent(IChatClient chatClient)
     {
-        _agentFactory = agentFactory;
+        _chatClient = chatClient;
     }
 
     public async Task<string> RunAsync(string input)
     {
-        var agent = _agentFactory.CreateAgent<ChatClientAgent>();
-        var thread = agent.CreateThread();
-        var response = await thread.InvokeAsync(input);
-        return response.GetContent<string>();
+        // Canonical MAF .NET pattern: construct ChatClientAgent directly.
+        // See https://learn.microsoft.com/dotnet/api/microsoft.agents.ai.chatclientagent
+        var agent = new ChatClientAgent(
+            _chatClient,
+            instructions: "You are a helpful AI assistant for .NET developers.");
+
+        var response = await agent.RunAsync(input);
+        return response.Text;
     }
 }
 ```
 
-This setup provides a clean and maintainable structure for building complex agentic applications.
+This setup provides a clean and maintainable structure for building complex agentic applications. The `AgentFactory` / `CreateAgent<T>()` pattern you may see in legacy internal tooling is **not** part of the public `Microsoft.Agents.AI` surface — direct `new ChatClientAgent(...)` construction (or the `chatClient.CreateAIAgent(...)` extension from `Microsoft.Agents.AI.OpenAI` / `.Foundry` packages) is the documented API.
 
 ---
 
@@ -215,37 +219,38 @@ The framework provides two primary agent types:
 
 ```csharp
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using System.Threading.Tasks;
 
 public class ConversationalAgent
 {
     private readonly ChatClientAgent _agent;
 
-    // AgentFactory is injected via DI
-    public ConversationalAgent(AgentFactory factory)
+    // Inject an IChatClient (Azure OpenAI, OpenAI, Ollama, etc.)
+    // via DI, then construct ChatClientAgent directly.
+    public ConversationalAgent(IChatClient chatClient)
     {
-        // Define the agent's role or system prompt
-        var options = new AgentOptions
-        {
-            Instructions = "You are a helpful AI assistant for .NET developers."
-        };
-        _agent = factory.CreateAgent<ChatClientAgent>(options);
+        _agent = new ChatClientAgent(
+            chatClient,
+            instructions: "You are a helpful AI assistant for .NET developers.");
     }
 
     public async Task StartConversation()
     {
-        // Each conversation is a separate thread
-        var thread = _agent.CreateThread();
+        // Each conversation gets its own thread
+        var thread = _agent.GetNewThread();
 
-        var response1 = await thread.InvokeAsync("What is the latest version of .NET?");
-        Console.WriteLine($"Assistant: {response1.GetContent<string>()}");
+        var response1 = await _agent.RunAsync("What is the latest version of .NET?", thread);
+        Console.WriteLine($"Assistant: {response1.Text}");
 
-        // The agent remembers the previous turn
-        var response2 = await thread.InvokeAsync("What were the key features in that release?");
-        Console.WriteLine($"Assistant: {response2.GetContent<string>()}");
+        // The thread carries history forward on the next turn
+        var response2 = await _agent.RunAsync("What were the key features in that release?", thread);
+        Console.WriteLine($"Assistant: {response2.Text}");
     }
 }
 ```
+
+> The `AgentFactory.CreateAgent<T>()` pattern from earlier drafts is not part of the public `Microsoft.Agents.AI` surface. Construct `ChatClientAgent` directly, or use the `chatClient.CreateAIAgent(...)` extension method shipped with `Microsoft.Agents.AI.OpenAI` / `Microsoft.Agents.AI.Foundry`.
 
 ### Agent Lifecycle Management
 

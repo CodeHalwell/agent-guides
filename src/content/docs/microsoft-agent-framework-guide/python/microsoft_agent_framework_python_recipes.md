@@ -22,39 +22,39 @@ These recipes are for developers new to the framework and cover fundamental conc
 
 ### Recipe 1: Simple Chat Agent (Python)
 
-This is the "Hello, World!" of the Agent Framework—a basic conversational agent that maintains history.
+This is the "Hello, World!" of the Agent Framework — a basic conversational agent that maintains history across turns. Rewritten against the real `agent_framework` package (previous drafts used a pseudo-`microsoft.agents.ai.AgentFactory` API that does not exist).
 
 ```python
 # simple_chat_agent.py
 import asyncio
-from microsoft.agents.ai import AgentFactory, Agent
+from agent_framework import Agent
+from agent_framework.openai import OpenAIChatClient
 
 async def run_interactive():
-    factory = AgentFactory()
-    
-    # Create the agent
-    agent = await factory.create_agent(
-        Agent,
-        instructions="You are a friendly AI assistant. Keep your responses concise."
+    # Construct the agent directly with a chat client.
+    # Swap OpenAIChatClient for FoundryChatClient / AnthropicClient / etc.
+    agent = Agent(
+        client=OpenAIChatClient(),  # reads OPENAI_API_KEY from env
+        instructions="You are a friendly AI assistant. Keep your responses concise.",
     )
 
-    print("Chat Agent Initialized. Type 'exit' to quit.")
-    
-    # Create a thread for the conversation
-    thread = await agent.create_thread()
+    # Create a session so follow-up turns see prior history.
+    session = agent.create_session()
 
+    print("Chat Agent Initialized. Type 'exit' to quit.")
     while True:
         user_input = input("You: ")
-        if user_input.lower() in ('exit', 'quit'):
+        if user_input.lower() in ("exit", "quit"):
             break
 
-        # Invoke the agent
-        response = await thread.invoke(user_input)
-        print(f"Assistant: {response.get_content()}")
+        response = await agent.run(user_input, session=session)
+        print(f"Assistant: {response.text}")
 
 if __name__ == "__main__":
     asyncio.run(run_interactive())
 ```
+
+> **Note:** recipes 2 through 11 below still use the pseudo-`microsoft.agents.ai` / `AgentFactory` pattern from an earlier draft. Apply the same translation shown here — import from `agent_framework`, construct `Agent(client=..., instructions=..., tools=[...])` directly, use `agent.create_session()` for multi-turn — until those recipes are individually rewritten. The [A2A](../microsoft_agent_framework_a2a_protocol/), [Workflows](../microsoft_agent_framework_graphs_declarative/) and [2025 features](./microsoft_agent_framework_python_2025_features/) pages already use the real API end-to-end.
 
 ### Recipe 2: Agent with a Single Tool
 

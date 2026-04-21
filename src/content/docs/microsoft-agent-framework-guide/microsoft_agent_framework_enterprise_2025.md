@@ -35,8 +35,11 @@ The October 2025 release includes comprehensive OpenTelemetry (OTel) instrumenta
 All agent operations are automatically instrumented with OpenTelemetry spans:
 
 ```python
+import os
 from agent_framework import Agent
+from agent_framework.foundry import FoundryChatClient
 from agent_framework.telemetry import configure_telemetry
+from azure.identity.aio import DefaultAzureCredential
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
