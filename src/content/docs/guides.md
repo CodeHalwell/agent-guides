@@ -17,8 +17,7 @@ description: "Complete list of all agent framework guides - Updated April 2026"
 ## 📖 How to Use This Page
 
 Each framework section includes links to:
-- **README** - Quick start and overview
-- **GUIDE_INDEX** - Complete navigation (if available)
+- **README** - Overview landing page with Zero → Hero tutorial checkpoints
 - **Comprehensive** - Full technical reference
 - **Production** - Deployment and scaling
 - **Diagrams** - Architecture visualizations
@@ -36,7 +35,6 @@ Each framework section includes links to:
 #### Python
 - [📂 Python Directory](/google-adk-guide/python/)
 - [📖 README](/google-adk-guide/python/)
-- [🗺️ GUIDE_INDEX](/google-adk-guide/python/guide_index/)
 - [📚 Comprehensive](/google-adk-guide/python/google_adk_comprehensive_guide/)
 - [🚀 Production](/google-adk-guide/python/google_adk_production_guide/)
 - [🎨 Diagrams](/google-adk-guide/python/google_adk_diagrams/)
@@ -47,7 +45,6 @@ Each framework section includes links to:
 #### Go
 - [📂 Go Directory](/google-adk-guide/go/)
 - [📖 README](/google-adk-guide/go/)
-- [🗺️ GUIDE_INDEX](/google-adk-guide/go/guide_index/)
 - [📚 Comprehensive](/google-adk-guide/go/google_adk_go_comprehensive_guide/)
 - [🚀 Production](/google-adk-guide/go/google_adk_go_production_guide/)
 - [👨‍💻 Recipes](/google-adk-guide/go/google_adk_go_recipes/)
@@ -61,7 +58,6 @@ Each framework section includes links to:
 #### Python
 - [📂 Python Directory](/semantic-kernel-guide/python/)
 - [📖 README](/semantic-kernel-guide/python/)
-- [🗺️ GUIDE_INDEX](/semantic-kernel-guide/python/guide_index/)
 - [📚 Comprehensive](/semantic-kernel-guide/python/semantic_kernel_comprehensive_python/)
 - [🚀 Production](/semantic-kernel-guide/python/semantic_kernel_production_python/)
 - [🎨 Diagrams](/semantic-kernel-guide/python/semantic_kernel_diagrams_python/)
@@ -73,7 +69,6 @@ Each framework section includes links to:
 #### .NET
 - [📂 .NET Directory](/semantic-kernel-guide/dotnet/)
 - [📖 README](/semantic-kernel-guide/dotnet/)
-- [🗺️ GUIDE_INDEX](/semantic-kernel-guide/dotnet/guide_index/)
 - [📚 Comprehensive](/semantic-kernel-guide/dotnet/semantic_kernel_comprehensive_dotnet/)
 - [🚀 Production](/semantic-kernel-guide/dotnet/semantic_kernel_production_dotnet/)
 - [🎨 Diagrams](/semantic-kernel-guide/dotnet/semantic_kernel_diagrams_dotnet/)
@@ -88,7 +83,6 @@ Each framework section includes links to:
 #### Python
 - [📂 Python Directory](/llamaindex-guide/python/)
 - [📖 README](/llamaindex-guide/python/)
-- [🗺️ GUIDE_INDEX](/llamaindex-guide/python/guide_index/)
 - [📚 Comprehensive](/llamaindex-guide/python/llamaindex_comprehensive_guide/)
 - [🚀 Production](/llamaindex-guide/python/llamaindex_production_guide/)
 - [🎨 Diagrams](/llamaindex-guide/python/llamaindex_diagrams/)
@@ -100,7 +94,6 @@ Each framework section includes links to:
 #### TypeScript
 - [📂 TypeScript Directory](/llamaindex-guide/typescript/)
 - [📖 README](/llamaindex-guide/typescript/)
-- [🗺️ GUIDE_INDEX](/llamaindex-guide/typescript/guide_index/)
 - [📚 Workflows Comprehensive](/llamaindex-guide/typescript/llamaindex_workflows_typescript_comprehensive_guide/)
 - [🚀 Production](/llamaindex-guide/typescript/llamaindex_typescript_production_guide/)
 - [👨‍💻 Recipes](/llamaindex-guide/typescript/llamaindex_typescript_recipes/)
@@ -127,7 +120,6 @@ Each framework section includes links to:
 #### TypeScript
 - [📂 TypeScript Directory](/langgraph-guide/typescript/)
 - [📖 README](/langgraph-guide/typescript/)
-- [🗺️ GUIDE_INDEX](/langgraph-guide/typescript/guide_index/)
 - [📚 Comprehensive](/langgraph-guide/typescript/langchain_langgraph_comprehensive_guide/)
 - [🚀 Production](/langgraph-guide/typescript/langchain_langgraph_production_guide/)
 - [🎨 Diagrams](/langgraph-guide/typescript/langchain_langgraph_diagrams/)
@@ -157,7 +149,6 @@ Each framework section includes links to:
 #### Python
 - [📂 Python Directory](/microsoft-agent-framework-guide/python/)
 - [📖 README](/microsoft-agent-framework-guide/python/)
-- [🗺️ GUIDE_INDEX](/microsoft-agent-framework-guide/python/guide_index/)
 - [📚 Comprehensive](/microsoft-agent-framework-guide/python/microsoft_agent_framework_python_comprehensive_guide/)
 - [⚡ Advanced](/microsoft-agent-framework-guide/python/microsoft_agent_framework_python_advanced/)
 - [✨ 2025 Features](/microsoft-agent-framework-guide/python/microsoft_agent_framework_python_2025_features/) **NEW**
@@ -165,7 +156,6 @@ Each framework section includes links to:
 #### .NET
 - [📂 .NET Directory](/microsoft-agent-framework-guide/dotnet/)
 - [📖 README](/microsoft-agent-framework-guide/dotnet/)
-- [🗺️ GUIDE_INDEX](/microsoft-agent-framework-guide/dotnet/guide_index/)
 - [📚 Comprehensive](/microsoft-agent-framework-guide/dotnet/microsoft_agent_framework_dotnet_comprehensive_guide/)
 - [🚀 Production](/microsoft-agent-framework-guide/dotnet/microsoft_agent_framework_dotnet_production_guide/)
 - [🎨 Diagrams](/microsoft-agent-framework-guide/dotnet/microsoft_agent_framework_dotnet_diagrams/)
@@ -184,7 +174,6 @@ Each framework section includes links to:
 #### Python
 - [📂 Python Directory](/openai-agents-sdk-guides/)
 - [📖 README](/openai-agents-sdk-guides/)
-- [🗺️ GUIDE_INDEX](/openai-agents-sdk-guides/guide_index/)
 - [📚 Comprehensive](/openai-agents-sdk-guides/openai_agents_sdk_comprehensive_guide/)
 - [🚀 Production](/openai-agents-sdk-guides/openai_agents_sdk_production_guide/)
 - [🎨 Diagrams](/openai-agents-sdk-guides/openai_agents_sdk_diagrams/)
@@ -241,7 +230,6 @@ Each framework section includes links to:
 
 - [📂 CrewAI Guide](/crewai-guide/)
 - [📖 README](/crewai-guide/)
-- [🗺️ GUIDE_INDEX](/crewai-guide/guide_index/)
 - [📚 Comprehensive](/crewai-guide/crewai_comprehensive_guide/)
 - [🚀 Production](/crewai-guide/crewai_production_guide/)
 - [🎨 Diagrams](/crewai-guide/crewai_diagrams/)
@@ -271,7 +259,6 @@ Each framework section includes links to:
 
 - [📂 PydanticAI Guide](/pydanticai-guide/)
 - [📖 README](/pydanticai-guide/)
-- [🗺️ GUIDE_INDEX](/pydanticai-guide/guide_index/)
 - [📚 Comprehensive](/pydanticai-guide/pydantic_ai_comprehensive_guide/)
 - [🚀 Production](/pydanticai-guide/pydantic_ai_production_guide/)
 - [🎨 Diagrams](/pydanticai-guide/pydantic_ai_diagrams/)
@@ -289,7 +276,6 @@ Each framework section includes links to:
 
 - [📂 Haystack Guide](/haystack-guide/)
 - [📖 README](/haystack-guide/)
-- [🗺️ GUIDE_INDEX](/haystack-guide/guide_index/)
 - [📚 Comprehensive](/haystack-guide/haystack_comprehensive_guide/)
 - [🚀 Production](/haystack-guide/haystack_production_guide/)
 - [🎨 Diagrams](/haystack-guide/haystack_diagrams/)
@@ -339,7 +325,6 @@ Each framework section includes links to:
 
 - [📂 Mistral Guide](/mistral-agents-api-guide/)
 - [📖 README](/mistral-agents-api-guide/)
-- [🗺️ GUIDE_INDEX](/mistral-agents-api-guide/guide_index/)
 - [📚 Comprehensive/Diagrams](/mistral-agents-api-guide/mistral_agents_api_comprehensive_guide/)
 - [🚀 Production](/mistral-agents-api-guide/mistral_agents_api_production_guide/)
 - [👨‍💻 Recipes](/mistral-agents-api-guide/mistral_agents_api_recipes/)

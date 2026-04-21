@@ -2285,5 +2285,5 @@ await adapter.start(port=8080)
 
 ---
 
-**[Back to Python README](./)** | **[Complete Index](./guide_index/)**
+**[Back to Python README](./)** | **[Overview](./)**
 

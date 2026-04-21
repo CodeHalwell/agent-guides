@@ -935,5 +935,5 @@ This guide covers Semantic Kernel .NET with 2025 features:
 | 1.74.0 | March 2026 | Server URL validation; Text Search LINQ provider; plugin graduation from alpha to preview; CVE-2026-26127 security fix |
 | 1.67.1 | November 2025 | Previous documented version |
 
-**[Back to .NET README](./)** | **[Complete Index](./guide_index/)**
+**[Back to .NET README](./)** | **[Overview](./)**
 
