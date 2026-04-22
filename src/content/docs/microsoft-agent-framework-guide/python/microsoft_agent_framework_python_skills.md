@@ -150,6 +150,7 @@ When the user pastes a contract, read `references/clauses.md` first. For each se
 File-based scripts need a `SkillScriptRunner` — the framework doesn't assume how you want to execute foreign code.
 
 ```python
+import json
 import subprocess
 from pathlib import Path
 from agent_framework import SkillsProvider, Skill, SkillScript

@@ -30,9 +30,16 @@ from agent_framework import (
     LocalEvaluator,
     evaluate_agent,
     keyword_check,
+    tool,
     tool_called_check,
 )
 from agent_framework.openai import OpenAIChatClient
+
+
+@tool
+def get_weather(location: str) -> str:
+    """Get the current weather for a location."""
+    return f"The weather in {location} is 22°C."
 
 
 async def main() -> None:

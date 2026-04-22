@@ -22,6 +22,7 @@ Verified against `agent-framework-core==1.1.0`.
 An executor calls `await ctx.request_info(data, response_type)`. The workflow pauses and emits an event. The caller sends a response keyed by request ID; a matching `@response_handler` on the same executor receives it and decides what to do next.
 
 ```python
+import asyncio
 from dataclasses import dataclass
 from agent_framework import (
     Executor,
@@ -73,7 +74,9 @@ async def run_with_human(topic: str) -> None:
             if event.type == "request_info":
                 question: ClarificationQuestion = event.data
                 print(f"{question.topic} — choose: {question.options}")
-                pending[event.request_id] = input("angle: ").strip()
+                # input() blocks the event loop; off-load to a worker thread.
+                user_input = await asyncio.to_thread(input, "angle: ")
+                pending[event.request_id] = user_input.strip()
             elif event.type == "output":
                 print("Done:", event.data)
                 return
