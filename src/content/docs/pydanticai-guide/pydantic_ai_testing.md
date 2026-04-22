@@ -7,7 +7,7 @@ language: python
 
 # Testing Agents
 
-Verified against **pydantic-ai==1.85.1** — source: `/tmp/pydantic-ai-install/pydantic_ai/models/test.py`, `/tmp/pydantic-ai-install/pydantic_ai/models/function.py`, `/tmp/pydantic-ai-install/pydantic_ai/agent/__init__.py`.
+Verified against **pydantic-ai==1.85.1** — source modules: `pydantic_ai.models.test`, `pydantic_ai.models.function`, `pydantic_ai.agent`.
 
 PydanticAI ships two model implementations built for tests: `TestModel` (auto-generates tool calls + a response from JSON schema) and `FunctionModel` (you write the response-generating function). Combined with `agent.override(...)` and `capture_run_messages`, you can unit-test agents hermetically — no network, no API keys, deterministic.
 
@@ -20,22 +20,12 @@ from pydantic_ai.models.test import TestModel
 agent = Agent('openai:gpt-5.2', system_prompt='Be terse.')
 
 def test_greet():
-    result = agent.override(model=TestModel()).__enter__()
-    try:
-        out = agent.run_sync('Hi')
-        assert isinstance(out.output, str)
-    finally:
-        agent.override(model=TestModel()).__exit__(None, None, None)
-```
-
-Idiomatic form uses `with`:
-
-```python
-def test_greet():
     with agent.override(model=TestModel()):
         out = agent.run_sync('Hi')
         assert isinstance(out.output, str)
 ```
+
+`agent.override(...)` returns a context manager — always use `with` (or hold a single instance and call `__enter__` / `__exit__` on _that_ same object). The override reverts on exit.
 
 ## `TestModel` — structural test double
 
@@ -228,10 +218,10 @@ For most unit tests, prefer `TestModel` or `FunctionModel`. For contract tests, 
 
 ```python
 def test_pricing_tool_is_registered():
-    with agent.override(model=TestModel()) as _:
-        result = agent.run_sync('anything')
-        params = _.last_model_request_parameters  # type: ignore[attr-defined]
-    names = [t.name for t in params.function_tools]
+    tm = TestModel()
+    with agent.override(model=tm):
+        agent.run_sync('anything')
+    names = [t.name for t in tm.last_model_request_parameters.function_tools]
     assert 'pricing' in names
 ```
 

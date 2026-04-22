@@ -7,7 +7,7 @@ language: python
 
 # Built-in Tools
 
-Verified against **pydantic-ai==1.85.1** — source: `/tmp/pydantic-ai-install/pydantic_ai/builtin_tools/__init__.py`.
+Verified against **pydantic-ai==1.85.1** — source module: `pydantic_ai.builtin_tools`.
 
 Built-in tools are provider-native — they execute inside the LLM provider's infrastructure, not in your Python process. You opt in via `builtin_tools=[...]` on `Agent`; PydanticAI forwards a typed config to the provider and streams the results back as `BuiltinToolCallPart` / `BuiltinToolReturnPart`.
 
@@ -50,7 +50,7 @@ A tool listed as GA may still have provider-specific constraints (e.g. `blocked_
 from pydantic_ai import Agent, WebSearchTool, WebSearchUserLocation
 
 agent = Agent(
-    'openai:gpt-5.2-responses',   # OpenAI Responses API required
+    'openai-responses:gpt-5.2',   # OpenAI Responses API required
     builtin_tools=[
         WebSearchTool(
             search_context_size='high',
@@ -114,7 +114,7 @@ Runs in the provider's sandbox (Anthropic's container, OpenAI's Python interpret
 from pydantic_ai import Agent, ImageGenerationTool
 
 agent = Agent(
-    'openai:gpt-5.2-responses',
+    'openai-responses:gpt-5.2',
     builtin_tools=[ImageGenerationTool(
         size='1024x1024',
         quality='high',
@@ -146,7 +146,7 @@ Generated images arrive as `FilePart`s in the response, then as `BinaryImage` in
 from pydantic_ai import Agent, FileSearchTool
 
 agent = Agent(
-    'openai:gpt-5.2-responses',
+    'openai-responses:gpt-5.2',
     builtin_tools=[FileSearchTool(file_store_ids=['vs_abc123', 'vs_xyz789'])],
 )
 ```
@@ -178,7 +178,7 @@ Built-in tool that asks the provider to call out to a remote MCP server. Differe
 from pydantic_ai import Agent, MCPServerTool
 
 agent = Agent(
-    'openai:gpt-5.2-responses',
+    'openai-responses:gpt-5.2',
     builtin_tools=[MCPServerTool(
         id='docs-mcp',
         url='https://mcp.example.com/docs',
@@ -282,7 +282,7 @@ class CalcResult(BaseModel):
     answer: float
     reasoning: str
 
-agent = Agent('openai:gpt-5.2-responses',
+agent = Agent('openai-responses:gpt-5.2',
               output_type=CalcResult,
               builtin_tools=[CodeExecutionTool()])
 ```
@@ -290,7 +290,7 @@ agent = Agent('openai:gpt-5.2-responses',
 ### 4. RAG via `FileSearchTool` + fallback to local embeddings
 
 ```python
-agent = Agent('openai:gpt-5.2-responses',
+agent = Agent('openai-responses:gpt-5.2',
               builtin_tools=[FileSearchTool(file_store_ids=['vs_prod'])])
 
 @agent.tool

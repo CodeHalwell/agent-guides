@@ -7,7 +7,7 @@ language: python
 
 # Toolsets
 
-Verified against **pydantic-ai==1.85.1** — source: `/tmp/pydantic-ai-install/pydantic_ai/toolsets/`.
+Verified against **pydantic-ai==1.85.1** — source module: `pydantic_ai.toolsets`.
 
 A *toolset* is a reusable, named collection of tools with a shared policy (retries, timeout, metadata, instructions). PydanticAI ships 10+ toolset wrappers that let you filter, rename, combine, gate, or lazy-load tools without rewriting the functions. They're the supported way to attach non-code tool sources — MCP servers, remote APIs, human approval — to an agent.
 
@@ -27,7 +27,7 @@ print(agent.run_sync('Multiply my deps by 3', deps=7).output)
 #> 21
 ```
 
-`toolsets=[...]` lives next to `tools=[...]`. Anything added via `@agent.tool` / `@agent.tool_plain` goes into the agent's built-in `_function_toolset`; external toolsets are additive.
+`toolsets=[...]` lives next to `tools=[...]`. Tools registered via `@agent.tool` / `@agent.tool_plain` are included automatically; `toolsets=[...]` adds extra toolsets on top of those.
 
 ## The toolset catalogue
 

@@ -7,7 +7,7 @@ language: python
 
 # Message History & Multi-Turn Conversations
 
-Verified against **pydantic-ai==1.85.1** — source: `/tmp/pydantic-ai-install/pydantic_ai/messages.py`, `/tmp/pydantic-ai-install/pydantic_ai/run.py`, `/tmp/pydantic-ai-install/pydantic_ai/_history_processor.py`.
+Verified against **pydantic-ai==1.85.1** — source modules: `pydantic_ai.messages`, `pydantic_ai.run`, `pydantic_ai._history_processor`.
 
 Every run of a PydanticAI agent produces a list of `ModelMessage`s. Pass that list (or the serialised form) back into the next run to keep a multi-turn conversation. Message history is what makes chat applications possible on top of PydanticAI's otherwise stateless `Agent`.
 
@@ -58,8 +58,12 @@ Use `all_messages()` as the next run's `message_history`; use `new_messages()` w
 There are JSON variants too (`run.py:151`): `all_messages_json()` and `new_messages_json()` return `bytes` you can store in a DB column.
 
 ```python
-# Persist just the delta produced by this turn
-row.messages_json += b'\n' + result.new_messages_json()
+from pydantic_ai.messages import ModelMessagesTypeAdapter
+
+# Persist just the delta produced by this turn (don't byte-concat JSON arrays — load, extend, re-dump)
+existing = ModelMessagesTypeAdapter.validate_json(row.messages_json) if row.messages_json else []
+existing.extend(result.new_messages())
+row.messages_json = ModelMessagesTypeAdapter.dump_json(existing)
 ```
 
 ## (De)serialisation with `ModelMessagesTypeAdapter`

@@ -7,7 +7,7 @@ language: python
 
 # Streaming
 
-Verified against **pydantic-ai==1.85.1** — source: `/tmp/pydantic-ai-install/pydantic_ai/result.py`, `/tmp/pydantic-ai-install/pydantic_ai/agent/abstract.py`, `/tmp/pydantic-ai-install/pydantic_ai/run.py`.
+Verified against **pydantic-ai==1.85.1** — source modules: `pydantic_ai.result`, `pydantic_ai.agent.abstract`, `pydantic_ai.run`.
 
 PydanticAI streams at three levels:
 
@@ -212,10 +212,9 @@ async with agent.run_stream(q) as s:
 async with agent.run_stream(q) as s:
     async for _ in s.stream_text(delta=True):
         pass
-    # AgentStream has both initial and cumulative usage tracking
-    used = s._stream_response._run_ctx.usage  # public via result methods in 1.85
     await s.get_output()
-print(s.usage())  # RunUsage populated after stream completes
+    used = s.usage()  # RunUsage available via the public API once streaming is done
+print(used)
 ```
 
 ### 4. Tool-call tracing via `run_stream_events`
