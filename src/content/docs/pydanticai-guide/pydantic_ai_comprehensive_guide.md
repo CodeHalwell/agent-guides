@@ -1,14 +1,14 @@
 ---
 title: "Pydantic AI: Comprehensive Technical Guide"
-description: "Version: 1.84.1 (April 2026) Framework: Pydantic AI - GenAI Agent Framework, the Pydantic Way Author Notes: Exhaustive technical documentation with production patterns, type safety"
+description: "Version: 1.85.1 (April 2026) Framework: Pydantic AI - GenAI Agent Framework, the Pydantic Way Author Notes: Exhaustive technical documentation with production patterns, type safety"
 framework: pydanticai
 ---
 
-Latest: 1.84.1 | Updated: April 20, 2026
+Latest: 1.85.1 | Updated: April 22, 2026
 # Pydantic AI: Comprehensive Technical Guide
 ## From Beginner to Expert Level
 
-**Version:** 1.84.1 (April 2026)  
+**Version:** 1.85.1 (April 2026)  
 **Framework:** Pydantic AI - GenAI Agent Framework, the Pydantic Way  
 **Author Notes:** Exhaustive technical documentation with production patterns, type safety emphasis, and FastAPI-inspired developer experience.
 
@@ -1515,30 +1515,46 @@ async def safe_database_operation(
 
 ### Built-in Tool Library
 
-Pydantic AI provides built-in tools for common use cases:
+Pydantic AI provides built-in tools that delegate to model-native capabilities (e.g. OpenAI's built-in tools).
+They are passed via the `builtin_tools` parameter on `Agent`. All are importable directly from `pydantic_ai`.
+
+**Supported built-in tools (v1.85.x):**
+
+| Tool | Import | Notes |
+|------|--------|-------|
+| `WebSearchTool` | `from pydantic_ai import WebSearchTool` | Model-native web search |
+| `WebFetchTool` | `from pydantic_ai import WebFetchTool` | Fetch and read URL content |
+| `CodeExecutionTool` | `from pydantic_ai import CodeExecutionTool` | Sandboxed code execution |
+| `ImageGenerationTool` | `from pydantic_ai import ImageGenerationTool` | Image generation |
+| `FileSearchTool` | `from pydantic_ai import FileSearchTool` | File/vector-store search (requires config) |
+| `MemoryTool` | `from pydantic_ai import MemoryTool` | Persistent memory (requires config) |
+| `MCPServerTool` | `from pydantic_ai import MCPServerTool` | MCP server integration (requires config) |
+| `XSearchTool` | `from pydantic_ai import XSearchTool` | xAI (Grok) web search |
+
+> **Deprecation (v1.85.0):** `UrlContextTool` is deprecated — use `WebFetchTool` instead.
 
 ```python
-from pydantic_ai import Agent
-from pydantic_ai.common_tools import (
-    DuckDuckGoSearch,  # Web search
-    UrlFetcher,        # Fetch webpage content
-    MemoryStorage,     # Persistent memory
-    CodeExecutor,      # Execute Python code (sandboxed)
-)
+# Installed: pydantic-ai==1.85.1
+# Verified against installed package — run with uv pip install pydantic-ai==1.85.1
+from pydantic_ai import Agent, WebSearchTool, WebFetchTool, CodeExecutionTool
 
 agent = Agent(
     'openai:gpt-4o',
     builtin_tools=[
-        DuckDuckGoSearch(max_results=5),
-        UrlFetcher(timeout=30),
-        MemoryStorage(backend='local'),
+        WebSearchTool(),                    # model-native web search
+        WebFetchTool(enable_citations=True), # fetch URL content with citation metadata
+        CodeExecutionTool(),                 # sandboxed code execution
     ]
 )
 
-# Agents can now search the web, fetch URLs, and access memory
-result = agent.run_sync('Search for latest Python releases')
+# The agent can now search the web, fetch pages, and execute code
+result = agent.run_sync('Search for the latest Python release and show a hello-world snippet')
 print(result.output)
 ```
+
+Tools requiring additional provider configuration (`FileSearchTool`, `MemoryTool`, `MCPServerTool`) must be
+set up via the model provider's API before use. See the
+[official docs](https://ai.pydantic.dev) for provider-specific configuration.
 
 ---
 
@@ -1840,10 +1856,88 @@ result = await agent.run('Reason through this complex multi-step problem...')
 
 ---
 
+## Embeddings (v1.85.x)
+
+`pydantic_ai.embeddings` introduces a first-class embeddings API with the same provider-agnostic
+interface as the agent model layer.
+
+```python
+# Installed: pydantic-ai==1.85.1
+from pydantic_ai import Embedder
+
+# Uses the same provider/model-string convention as Agent
+embedder = Embedder('openai:text-embedding-3-small')
+result = await embedder.embed(['Hello world', 'How are you?'])
+print(result.embeddings)  # list[list[float]]
+print(result.usage)       # EmbeddingResult with token counts
+```
+
+Provider-specific models follow the `<provider>:<model>` format (e.g.
+`'openai:text-embedding-3-large'`, `'google-gla:text-embedding-004'`). A `TestEmbeddingModel`
+is available for unit tests (no API key required).
+
+---
+
+## Human-in-the-Loop: ApprovalRequiredToolset (v1.85.x)
+
+`ApprovalRequiredToolset` wraps an existing toolset and intercepts tool calls that need
+human approval before execution. The agent raises `ApprovalRequired` if a tool is invoked
+without prior approval.
+
+```python
+# Installed: pydantic-ai==1.85.1
+from pydantic_ai import Agent, ApprovalRequired, ApprovalRequiredToolset, Tool
+
+def send_email(to: str, body: str) -> str:
+    """Send an email."""
+    return f'Email sent to {to}'
+
+approval_toolset = ApprovalRequiredToolset(
+    toolset=...,  # wrap any existing toolset
+    requires_approval=lambda tool_name, args: tool_name == 'send_email',
+)
+
+try:
+    result = await agent.run('Send a summary to alice@example.com')
+except ApprovalRequired as exc:
+    # Present exc.tool_name and exc.args to a human for review
+    # then call exc.approve() or exc.deny()
+    print(f'Approval needed for: {exc.tool_name}({exc.metadata})')
+```
+
+---
+
+## AG UI Integration (v1.85.x)
+
+`pydantic_ai.ag_ui` provides an [AG UI Protocol](https://docs.ag-ui.com) adapter so any
+PydanticAI agent can be served as a standards-compliant AG UI endpoint.
+
+```python
+# Installed: pydantic-ai==1.85.1
+from pydantic_ai import Agent
+from pydantic_ai.ag_ui import AGUIApp
+
+agent = Agent('openai:gpt-4o', instructions='You are a helpful assistant.')
+
+# Mount as a FastAPI sub-application
+app = AGUIApp(agent=agent)
+
+# In FastAPI:
+# from fastapi import FastAPI
+# api = FastAPI()
+# api.mount('/agent', app)
+```
+
+`AGUIApp` handles SSE event streaming, tool-call events, and the AG UI state protocol automatically.
+
+---
+
 ## Revision History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.85.1 | April 22, 2026 | Patch fix; `UrlContextTool` marked deprecated (use `WebFetchTool`). Built-in tools, embeddings, AG UI, and `ApprovalRequiredToolset` verified against installed package. `pydantic_ai.common_tools` stub corrected to `pydantic_ai.builtin_tools` with correct class names. Snippets executed against 1.85.1. |
+| 1.85.0 | April 21, 2026 | New embeddings API (`Embedder`, `EmbeddingModel`, `EmbeddingSettings`); AG UI adapter (`AGUIApp`, `AGUIAdapter`, `run_ag_ui`); `ApprovalRequired`/`ApprovalRequiredToolset` for HITL; `DeferredLoadingToolset`; `UrlContextTool` deprecated in favour of `WebFetchTool` |
 | 1.84.1 | April 18, 2026 | Skip tool hooks for internal output tools; always pass dict-shaped validated args to hooks for single-`BaseModel` tools |
 | 1.84.0 | April 17, 2026 | `OllamaModel` subclass (fixes structured output on Ollama Cloud); `XSearchTool`/`FileSearchTool` for xAI (Grok); `FastMCPToolset` per-call metadata injection; Bedrock prompt cache TTL; Claude Opus 4.7 support (`anthropic:claude-opus-4-7`); stateful `OpenAICompaction`; fix exponential-time regex in Google `FileSearchTool` |
 | 1.83.0 | April 16, 2026 | Hard removal of all `result_*` → `output_*` renames (breaking); `EvaluationReport` API; pydantic-graph expansion with branching/looping; `defer_loading` for lazy model init; `ThreadExecutor` for sync-in-async tools; smart instruction caching; `CaseLifecycle` hooks; local `WebFetch` tool |

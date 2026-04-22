@@ -19,7 +19,7 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
     ```
   </Card>
   <Card title="Version" icon="information">
-    **v1.85.0** · April 2026 · Python 3.10+
+    **v1.85.1** · April 2026 · Python 3.10+
   </Card>
   <Card title="Best for" icon="puzzle">
     Typed APIs, structured output, validated data pipelines, evals-driven agents.
@@ -79,12 +79,14 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
   <LinkCard title="Streaming server (FastAPI)" href="./pydantic_ai_streaming_server_fastapi/" />
 </CardGrid>
 
-## What's new in v1.84.1 (April 2026)
+## What's new in v1.85.1 (April 2026)
 
-- **Durable execution** — checkpointing and resume for long-running agents.
-- **Graph support** — typed state graphs with Pydantic nodes.
-- **Evals framework** — LLM-as-judge, regression suites, CI integration.
-- **Advanced integrations** — Logfire, OpenTelemetry, observability providers.
+- **8 built-in tools** — `WebSearchTool`, `WebFetchTool`, `CodeExecutionTool`, `ImageGenerationTool`, `FileSearchTool`, `MemoryTool`, `MCPServerTool`, `XSearchTool` via `builtin_tools=[...]` on `Agent`. `UrlContextTool` is **deprecated** — replace with `WebFetchTool`.
+- **Embeddings API** — `Embedder` / `EmbeddingModel` / `EmbeddingSettings` in `pydantic_ai.embeddings` for first-class embedding workflows.
+- **AG UI adapter** — `AGUIApp` and `AGUIAdapter` in `pydantic_ai.ag_ui` serve any agent as an [AG UI Protocol](https://docs.ag-ui.com) compliant endpoint.
+- **Human-in-the-loop** — `ApprovalRequired` / `ApprovalRequiredToolset` intercept tool calls for human review before execution.
+- **Deferred loading** — `DeferredLoadingToolset`, `DeferredToolRequests`, `DeferredToolResults` for lazy tool initialisation.
+- Prior (v1.84.x): durable execution, graph support, evals framework, Logfire/OpenTelemetry.
 
 ## Install, minimal example
 
@@ -108,9 +110,10 @@ Ready? **[Start Zero → Hero Step 1 →](./pydantic_ai_comprehensive_guide/#phi
 
 ## Revision history
 
-| Date | Version | Changes |
-|------|---------|---------|
-| 2026-04-21 | 1.84.1 | Index redesigned with Zero → Hero + Jump-to-topic grid. |
-| April 18, 2026 | 1.84.1 | Patch; bug fixes. |
-| April 17, 2026 | 1.84.0 | Evals framework; graph support improvements. |
-| November 2025 | 1.14.x | Initial 2025 guide with durable execution, graphs, integrations. |
+| Date | Framework version (installed) | Summary of changes | Reviewer |
+|------|-------------------------------|--------------------|----------|
+| 2026-04-22 | pydantic-ai 1.85.1 | Version bumped 1.85.0 → 1.85.1; "What's new" section updated for v1.85.x (8 built-in tools, embeddings API, AG UI adapter, ApprovalRequiredToolset HITL, DeferredLoadingToolset); fabricated `pydantic_ai.common_tools` imports replaced with correct `pydantic_ai.builtin_tools` API; `UrlContextTool` deprecation noted. Snippets verified against installed 1.85.1. | Claude routine |
+| 2026-04-21 | pydantic-ai 1.84.1 | Index redesigned with Zero → Hero + Jump-to-topic grid. |
+| 2026-04-18 | pydantic-ai 1.84.1 | Patch; bug fixes. |
+| 2026-04-17 | pydantic-ai 1.84.0 | Evals framework; graph support improvements. |
+| November 2025 | pydantic-ai 1.14.x | Initial 2025 guide with durable execution, graphs, integrations. |

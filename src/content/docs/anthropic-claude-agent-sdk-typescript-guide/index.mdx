@@ -19,7 +19,7 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
     ```
   </Card>
   <Card title="Version" icon="information">
-    **v0.2.116** · April 2026 · Node 18+
+    **v0.2.117** · April 2026 · Node 18+
   </Card>
   <Card title="Best for" icon="puzzle">
     Full-stack Claude apps, Node streaming servers, MCP-rich workflows.
@@ -70,17 +70,17 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
   <LinkCard title="Streaming server (Express)" href="./claude_streaming_server_express/" />
 </CardGrid>
 
-## What's new in v0.2.116 (April 2026)
+## What's new in v0.2.117 (April 2026)
 
-- **Package rename** from `@anthropic-ai/claude-code-sdk` → `@anthropic-ai/claude-agent-sdk`.
-- **Computer Use** parity with Python SDK.
-- **MCP** client and server support — `createSdkMcpServer(...)` helper.
-- **Session management** — `listSessions`, `forkSession`, `deleteSession`, `renameSession`, `tagSession`, `InMemorySessionStore`.
-- **Hooks** via `HOOK_EVENTS` object + `hooks:` option on `query()` / `ClaudeSDKClient`.
+- **v0.2.117 (April 21)** — Patch release; dependency updates.
+- **v0.2.116 (April 20)** — Stability improvements.
+- **v0.2.111–0.2.114 (April 16–17)** — Patch series: MCP protocol alignment, extended-thinking type alignment with Python SDK, performance improvements.
+- **v0.2.110** — Multibyte character fix; MCP cleanup; extended thinking config types.
+- Prior: package rename (`@anthropic-ai/claude-code-sdk` → `@anthropic-ai/claude-agent-sdk`); Computer Use; MCP; session management; hooks.
 
 ## Install, minimal example
 
-There is no `Agent` class in `@anthropic-ai/claude-agent-sdk` 0.2.116. The public entry points are `query()` (one-shot) and the lower-level exports listed on the package. Earlier drafts of this page documented a `new Agent({...})` constructor — it does not exist.
+There is no `Agent` class in `@anthropic-ai/claude-agent-sdk` 0.2.117. The public entry points are `query()` (one-shot) and the lower-level exports listed on the package. Earlier drafts of this page documented a `new Agent({...})` constructor — it does not exist.
 
 ```typescript
 // One-shot query
@@ -105,11 +105,11 @@ Ready? **[Start Zero → Hero Step 1 →](./claude_agent_sdk_typescript_comprehe
 
 ## Revision history
 
-| Date | Version | Changes |
-|------|---------|---------|
-| 2026-04-21 | 0.2.116 | Minimal example rewritten after pkg introspection: `new Agent(...)` does not exist; use `query()` / session helpers. |
-| 2026-04-21 | 0.2.116 | Banner bumped to 0.2.116 (installed). |
-| April 18, 2026 | 0.2.113 | Stability fixes; SDK rename stabilised. |
-| 2025 | Rebrand | Renamed from `@anthropic-ai/claude-code-sdk` to `@anthropic-ai/claude-agent-sdk`. |
+| Date | Framework version (installed) | Summary of changes | Reviewer |
+|------|-------------------------------|--------------------|----------|
+| 2026-04-22 | @anthropic-ai/claude-agent-sdk 0.2.117 | Version bumped 0.2.116 → 0.2.117; "What's new" section updated; revision history entries added for 0.2.111–0.2.117 patch series. | Claude routine |
+| 2026-04-21 | @anthropic-ai/claude-agent-sdk 0.2.116 | Minimal example rewritten after pkg introspection: `new Agent(...)` does not exist; use `query()` / session helpers. Banner bumped to 0.2.116. |
+| 2026-04-18 | @anthropic-ai/claude-agent-sdk 0.2.113 | Stability fixes; SDK rename stabilised. |
+| 2025 | — | Renamed from `@anthropic-ai/claude-code-sdk` to `@anthropic-ai/claude-agent-sdk`. |
 
 **Note:** Python implementation lives at [Claude Agent SDK (Python)](/anthropic-claude-agent-sdk-guide/).
