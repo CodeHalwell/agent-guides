@@ -1863,13 +1863,18 @@ interface as the agent model layer.
 
 ```python
 # Installed: pydantic-ai==1.85.1
+import asyncio
+
 from pydantic_ai import Embedder
 
-# Uses the same provider/model-string convention as Agent
-embedder = Embedder('openai:text-embedding-3-small')
-result = await embedder.embed(['Hello world', 'How are you?'])
-print(result.embeddings)  # list[list[float]]
-print(result.usage)       # EmbeddingResult with token counts
+async def main() -> None:
+    # Uses the same provider/model-string convention as Agent
+    embedder = Embedder('openai:text-embedding-3-small')
+    result = await embedder.embed(['Hello world', 'How are you?'])
+    print(result.embeddings)  # list[list[float]]
+    print(result.usage)       # EmbeddingResult with token counts
+
+asyncio.run(main())
 ```
 
 Provider-specific models follow the `<provider>:<model>` format (e.g.
@@ -1882,27 +1887,40 @@ is available for unit tests (no API key required).
 
 `ApprovalRequiredToolset` wraps an existing toolset and intercepts tool calls that need
 human approval before execution. The agent raises `ApprovalRequired` if a tool is invoked
-without prior approval.
+and the `approval_required_func` returns `True`.
 
 ```python
 # Installed: pydantic-ai==1.85.1
-from pydantic_ai import Agent, ApprovalRequired, ApprovalRequiredToolset, Tool
+# Verified against installed package.
+import asyncio
+
+from pydantic_ai import Agent, ApprovalRequired, ApprovalRequiredToolset, FunctionToolset
 
 def send_email(to: str, body: str) -> str:
     """Send an email."""
     return f'Email sent to {to}'
 
+# Wrap the function in a FunctionToolset
+base_toolset = FunctionToolset(tools=[send_email])
+
+# approval_required_func signature: (RunContext, ToolDefinition, dict[str, Any]) -> bool
 approval_toolset = ApprovalRequiredToolset(
-    toolset=...,  # wrap any existing toolset
-    requires_approval=lambda tool_name, args: tool_name == 'send_email',
+    wrapped=base_toolset,
+    approval_required_func=lambda ctx, tool_def, args: tool_def.name == 'send_email',
 )
 
-try:
-    result = await agent.run('Send a summary to alice@example.com')
-except ApprovalRequired as exc:
-    # Present exc.tool_name and exc.args to a human for review
-    # then call exc.approve() or exc.deny()
-    print(f'Approval needed for: {exc.tool_name}({exc.metadata})')
+agent = Agent('openai:gpt-4o', toolsets=[approval_toolset])
+
+async def main() -> None:
+    try:
+        result = await agent.run('Send a summary to alice@example.com')
+        print(result.output)
+    except ApprovalRequired as exc:
+        # exc.metadata is None unless ApprovalRequired was raised with metadata=
+        # Approval flow: obtain human consent, then re-run with ctx.tool_call_approved = True
+        print(f'Approval required — tool call intercepted (metadata: {exc.metadata})')
+
+asyncio.run(main())
 ```
 
 ---
