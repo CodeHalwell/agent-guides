@@ -122,7 +122,7 @@ StreamPart = (
 Narrow by `part["type"]`:
 
 ```python
-for part in graph.astream(inp, cfg, version="v2"):
+async for part in graph.astream(inp, cfg, version="v2"):
     match part["type"]:
         case "values":
             # part["data"]: final-ish full state; part["interrupts"]: tuple[Interrupt, ...]

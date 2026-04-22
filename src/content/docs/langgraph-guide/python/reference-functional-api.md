@@ -171,7 +171,7 @@ for update in pipeline.stream(["a", "b"], cfg):
     print(update)
 
 # Token-level streaming from LLMs inside tasks:
-for mode, data in pipeline.stream(inputs, cfg, stream_mode=["updates", "messages"]):
+for mode, data in pipeline.stream(["a", "b"], cfg, stream_mode=["updates", "messages"]):
     print(mode, data)
 ```
 
@@ -285,7 +285,7 @@ store = InMemoryStore()
 def remember(inp: dict, runtime: Runtime) -> dict:
     uid = inp["user_id"]
     assert runtime.store is not None
-    runtime.store.put(("mem", uid), "latest", inp["text"])
+    runtime.store.put(("mem", uid), "latest", {"text": inp["text"]})
     return {"saved": True}
 ```
 

@@ -25,7 +25,7 @@ Pick the right backend:
 | `AsyncPostgresSaver` | `langgraph.checkpoint.postgres.aio` | Async production deployments | Yes | Yes | Yes | No | Yes |
 | `ShallowPostgresSaver` / `AsyncShallowPostgresSaver` | `langgraph.checkpoint.postgres.shallow` | Latest-only row, no time travel | Yes | **No** | (both) | No | Yes |
 
-> `ShallowPostgresSaver` is **deprecated since 2.0.20** and slated for removal in 3.0.0. Use `PostgresSaver` with `durability="exit"` on `invoke` / `stream` instead.
+> `ShallowPostgresSaver` is **deprecated since 2.0.20** and will be removed in a future release (its own `DeprecationWarning` still names 3.0.0, but as of 3.0.5 the class is retained for compatibility). Use `PostgresSaver` with `durability="exit"` on `invoke` / `stream` instead.
 
 The SQLite and Postgres packages install separately:
 
