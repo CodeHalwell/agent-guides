@@ -19,7 +19,7 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
     ```
   </Card>
   <Card title="Version" icon="information">
-    **v0.1.64** · April 2026 · Python 3.10+
+    **v0.1.65** · April 2026 · Python 3.10+
   </Card>
   <Card title="Best for" icon="puzzle">
     Claude-exclusive apps, Computer Use, MCP-heavy workflows, durable sessions.
@@ -74,12 +74,11 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
   <LinkCard title="Production guide" href="./anthropic_claude_agent_sdk_production_guide/" />
 </CardGrid>
 
-## What's new in v0.1.63 (April 2026)
+## What's new in v0.1.65 (April 2026)
 
-- **Extended thinking configuration** — control reasoning token budgets.
-- **File checkpointing** — save and restore session state.
-- **Session rewind** — travel back to any turn in a conversation.
-- **Computer Use stability improvements** for long-running VM sessions.
+- **v0.1.65 (April 22)** — Patch release; bundled Claude Code CLI updated; dependency pinning improvements.
+- **v0.1.64 (April 20)** — Stability and dependency updates.
+- **v0.1.63** — `get_context_usage()` per-category token breakdown; `typing.Annotated` per-parameter descriptions; `tool_use_id`/`agent_id` in `ToolPermissionContext`.
 
 ## Install, minimal example
 
@@ -124,11 +123,12 @@ Ready? **[Start Zero → Hero Step 1 →](./anthropic_claude_agent_sdk_comprehen
 
 ## Revision history
 
-| Date | Version | Changes |
-|------|---------|---------|
-| 2026-04-21 | 0.1.63 | Index redesigned with Zero → Hero + Jump-to-topic grid. |
-| April 18, 2026 | 0.1.63 | Stability fixes. |
-| April 16, 2026 | 0.1.60 | Extended thinking; file checkpointing; session rewind. |
-| 2025 | Rebrand | Renamed from Claude Code SDK to Claude Agent SDK. |
+| Date | Framework version (installed) | Summary of changes | Reviewer |
+|------|-------------------------------|--------------------|----------|
+| 2026-04-22 | claude-agent-sdk 0.1.65 | Version bumped 0.1.63 → 0.1.65; "What's new" section updated; revision history entries added for 0.1.64 and 0.1.65. | Claude routine |
+| 2026-04-21 | claude-agent-sdk 0.1.63 | Index redesigned with Zero → Hero + Jump-to-topic grid. | — |
+| 2026-04-18 | claude-agent-sdk 0.1.63 | Stability fixes. | — |
+| 2026-04-16 | claude-agent-sdk 0.1.60 | Extended thinking; file checkpointing; session rewind. | — |
+| 2025 | — | Renamed from Claude Code SDK to Claude Agent SDK. | — |
 
 **Note:** TypeScript implementation lives at [Claude Agent SDK (TypeScript)](/anthropic-claude-agent-sdk-typescript-guide/).

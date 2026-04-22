@@ -70,3 +70,6 @@ pyproject.toml
 .python-version
 hello.py
 main.py
+
+# Docs-refresh routine virtual environments
+.routine-envs/
