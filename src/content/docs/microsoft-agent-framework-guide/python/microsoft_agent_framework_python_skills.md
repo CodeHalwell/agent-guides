@@ -148,26 +148,55 @@ When the user pastes a contract, read `references/clauses.md` first. For each se
 
 ### Running file-based scripts
 
-File-based scripts need a `SkillScriptRunner` — the framework doesn't assume how you want to execute foreign code.
+File-based scripts need a `SkillScriptRunner` — the framework doesn't assume how you want to execute foreign code. The protocol is a single-method `runtime_checkable`, so any callable or class that matches is accepted:
 
 ```python
+from typing import Protocol, runtime_checkable
+from agent_framework import Skill, SkillScript
+
+
+@runtime_checkable
+class SkillScriptRunner(Protocol):
+    async def __call__(
+        self,
+        skill: Skill,
+        script: SkillScript,
+        args: dict | None = None,
+    ) -> str: ...
+```
+
+A minimal subprocess runner — good for trusted scripts that ship with your own app:
+
+```python
+import asyncio
 import json
-import subprocess
 import sys
 from pathlib import Path
 from agent_framework import SkillsProvider, Skill, SkillScript
 
 
-def subprocess_runner(skill: Skill, script: SkillScript, args: dict | None = None) -> str:
+async def subprocess_runner(
+    skill: Skill,
+    script: SkillScript,
+    args: dict | None = None,
+) -> str:
     path = Path(skill.path) / script.path
-    result = subprocess.run(
-        # sys.executable keeps the runner in the same venv/pyenv as the host.
-        [sys.executable, str(path), "--args", json.dumps(args or {})],
-        capture_output=True, text=True, timeout=30,
+
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, str(path), "--args", json.dumps(args or {}),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr)
-    return result.stdout
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()            # reap the child so we don't leak zombies
+        raise RuntimeError(f"Script {script.name} timed out after 30s")
+
+    if proc.returncode != 0:
+        raise RuntimeError(stderr.decode("utf-8"))
+    return stdout.decode("utf-8")
 
 
 provider = SkillsProvider(
@@ -176,7 +205,73 @@ provider = SkillsProvider(
 )
 ```
 
-For anything that handles untrusted code, run in a sandbox (Docker, Firecracker, Azure Container Instances). The runner is the integration point — plug in whatever sandbox you already have.
+### Sandboxed runner (Docker / ACI / Firecracker)
+
+For untrusted scripts, isolate execution. This runner shells out to `docker run` against a pre-built image that contains only the Python interpreter and the skill directory; tune it for your sandbox of choice:
+
+```python
+import asyncio
+import json
+from agent_framework import Skill, SkillScript
+
+
+class DockerSkillRunner:
+    def __init__(
+        self,
+        image: str,
+        *,
+        network: str = "none",
+        memory: str = "512m",
+        timeout: float = 60,
+    ) -> None:
+        self.image = image
+        self.network = network
+        self.memory = memory
+        self.timeout = timeout
+
+    async def __call__(
+        self,
+        skill: Skill,
+        script: SkillScript,
+        args: dict | None = None,
+    ) -> str:
+        cmd = [
+            "docker", "run", "--rm",
+            f"--network={self.network}",
+            f"--memory={self.memory}",
+            "--read-only",
+            "-v", f"{skill.path}:/skill:ro",
+            self.image,
+            "python", f"/skill/{script.path}",
+            "--args", json.dumps(args or {}),
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=self.timeout
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise RuntimeError(
+                f"Docker execution of {script.path} timed out after {self.timeout}s"
+            )
+        if proc.returncode != 0:
+            raise RuntimeError(stderr.decode("utf-8"))
+        return stdout.decode("utf-8")
+
+
+provider = SkillsProvider(
+    skill_paths="./skills",
+    script_runner=DockerSkillRunner(image="org/skill-sandbox:latest"),
+)
+```
+
+Azure Container Instances, Firecracker microVMs, and AWS Lambda all slot into the same shape — build the container once, let the runner shell out per invocation. The runner is the only integration point that varies.
 
 ## Script approval
 
@@ -191,6 +286,40 @@ provider = SkillsProvider(
 ```
 
 When the agent tries to run a script, the run pauses and emits a `function_approval_request`. Your application presents it to the user and calls `request.to_function_approval_response(approved=True)` (or `False`) — see the [HITL page](./microsoft_agent_framework_python_hitl/#tool-approval) for the approval loop.
+
+Full approval-loop skeleton — handle the pause, show the request to a human, and resume:
+
+```python
+from agent_framework import Agent
+from agent_framework.openai import OpenAIChatClient
+
+
+agent = Agent(
+    client=OpenAIChatClient(),
+    context_providers=[SkillsProvider(
+        skill_paths="./skills",
+        script_runner=my_runner,
+        require_script_approval=True,
+    )],
+)
+
+session = agent.create_session()
+stream = agent.run("Run the nightly report", session=session, stream=True)
+
+async for update in stream:
+    if update.type == "function_approval_request":
+        proposal = update.data
+        print(f"Approve script {proposal.function_call.name}"
+              f" with args {proposal.function_call.arguments}?")
+        # Present to a human, collect a decision, then resume THIS stream
+        # so the paused tool call can continue in-place.
+        approval = proposal.to_function_approval_response(approved=True)
+        await stream.send_response(approval)
+    elif update.type == "message":
+        print(update.text)
+```
+
+Reject with `approved=False` and the model is told the call was declined — it can either stop, retry with different arguments, or pick a different approach. Always send the response back through the active `stream` (via `stream.send_response(...)`) rather than starting a fresh `agent.run(...)` — a new run would leave the original paused invocation unresolved.
 
 ## Mixing code-defined and file-based skills
 

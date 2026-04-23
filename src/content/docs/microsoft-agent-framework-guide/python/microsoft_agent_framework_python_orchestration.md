@@ -496,3 +496,52 @@ Event types you'll see (the `type` attribute is a `Literal[...]` string):
 - `warning` / `error` — diagnostic events; inspect `event.details` for the error payload.
 
 `event.origin` tells you whether the event came from the framework itself (`WorkflowEventSource.FRAMEWORK`) or from an executor (`WorkflowEventSource.EXECUTOR`) — useful when you want to skip framework-emitted super-step events and only see outputs from your own code.
+
+## Further `WorkflowBuilder` patterns
+
+### Dynamic fan-out with a selection function
+
+`add_multi_selection_edge_group` evaluates a selector per payload and sends the message to the subset of targets it returns. Good for priority routing or feature-flag gated workers:
+
+```python
+from dataclasses import dataclass
+from agent_framework import WorkflowBuilder
+
+
+@dataclass
+class Task:
+    priority: str
+    data: str
+
+
+def pick_workers(task: Task, available: list[str]) -> list[str]:
+    if task.priority == "high":
+        return available                    # broadcast to all workers
+    return [available[0]]                   # single worker for low-priority
+
+
+workflow = (
+    WorkflowBuilder(start_executor=dispatcher)
+    .add_multi_selection_edge_group(
+        dispatcher,
+        [worker_a, worker_b, worker_c],
+        selection_func=pick_workers,
+    )
+    .build()
+)
+```
+
+### Collecting outputs from a subset of executors
+
+By default the workflow yields outputs from any executor that calls `ctx.yield_output(...)`. Restrict to specific ones with `output_executors=` — useful when upstream nodes emit debug traces you don't want in the final `get_outputs()`:
+
+```python
+workflow = (
+    WorkflowBuilder(
+        start_executor=classifier,
+        output_executors=[billing, refund, fallback],
+    )
+    .add_switch_case_edge_group(classifier, cases=[...])
+    .build()
+)
+```
