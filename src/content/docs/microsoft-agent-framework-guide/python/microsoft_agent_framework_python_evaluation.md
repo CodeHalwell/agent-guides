@@ -378,6 +378,122 @@ async def ci_gate(agent, queries: list[str]) -> None:
 
 Plug that into a pytest test or a standalone CI step — the failing check name plus `reason` is enough to triage most regressions without opening the transcript UI.
 
+## Running `LocalEvaluator` directly on `EvalItem`s
+
+`evaluate_agent` is the common entry point — it runs the agent, builds `EvalItem`s, and scores them. For offline regression tests against a recorded corpus, skip the agent entirely and feed `EvalItem`s into `LocalEvaluator.evaluate(...)`:
+
+```python
+from agent_framework import (
+    Content,
+    ConversationSplit,
+    EvalItem,
+    ExpectedToolCall,
+    LocalEvaluator,
+    Message,
+    keyword_check,
+    tool_calls_present,
+)
+
+
+items = [
+    # Item 1 — a real production trace with a tool call. Note the function_call
+    # and function_result Content entries: tool_calls_present inspects
+    # conversation for these, matching them against expected_tool_calls.
+    EvalItem(
+        conversation=[
+            Message(role="user", contents=[Content.from_text("What's the weather in Oslo?")]),
+            Message(
+                role="assistant",
+                contents=[Content.from_function_call(
+                    call_id="call_1",
+                    name="get_weather",
+                    arguments={"location": "Oslo"},
+                )],
+            ),
+            Message(
+                role="tool",
+                contents=[Content.from_function_result(
+                    call_id="call_1",
+                    result={"temp_c": -2, "condition": "snow"},
+                )],
+            ),
+            Message(role="assistant", contents=[Content.from_text("It's -2°C and snowing in Oslo.")]),
+        ],
+        expected_tool_calls=[ExpectedToolCall("get_weather", {"location": "Oslo"})],
+    ),
+    # Item 2 — plain text-only trace. No tool calls expected.
+    EvalItem(
+        conversation=[
+            Message(role="user", contents=[Content.from_text("Summarise this doc.")]),
+            Message(role="assistant", contents=[Content.from_text("The doc is about X, Y, Z.")]),
+        ],
+        expected_output="The doc is about X, Y, Z.",
+        split_strategy=ConversationSplit.LAST_TURN,
+    ),
+]
+
+# tool_calls_present reads item.expected_tool_calls — it's a no-op on items
+# that don't set it, so the second item passes the check trivially. Use
+# tool_called_check(name) only when your conversation actually contains
+# function_call Content entries for that name.
+local = LocalEvaluator(keyword_check("°C"), tool_calls_present)
+results = await local.evaluate(items, eval_name="offline-regression")
+
+print(results.status, results.result_counts)     # completed {'passed': 1, 'failed': 1, 'errored': 0}
+for item in results.items:
+    print(item.item_id, item.status, [s.name for s in item.scores if not s.passed])
+```
+
+- Item 1 passes both checks (response contains `°C`, expected `get_weather` call is present).
+- Item 2 fails `keyword_check("°C")` (its response doesn't mention temperature).
+
+Which check to use depends on what the recorded trace carries. `tool_called_check(name)` walks the conversation for `function_call` content and fails if that content isn't present — the right choice when you trust the trace format. `tool_calls_present` and `tool_call_args_match` compare the conversation's actual calls against `EvalItem.expected_tool_calls` — the right choice when different items have different expectations or some items have none.
+
+This keeps the evaluator loop cheap — no LLM calls, no network — ideal for replaying production traces in CI.
+
+### Reading per-check breakdowns from `EvalResults`
+
+Every `EvalResults` returned by `LocalEvaluator.evaluate()` carries a `per_evaluator` map keyed by check name. Use it to summarise which checks failed most often without walking every item:
+
+```python
+results = await local.evaluate(items)
+
+for check_name, counts in results.per_evaluator.items():
+    total = counts["passed"] + counts["failed"] + counts["errored"]
+    pass_rate = counts["passed"] / total if total else 0
+    print(f"{check_name}: {pass_rate:.0%} passed ({counts})")
+```
+
+Plot those over time and you get a per-check regression dashboard — cheap, entirely local, driven by `LocalEvaluator` output.
+
+### Returning `CheckResult` for rich failure context
+
+The minimal `@evaluator` return type is `bool`, but return `CheckResult` when you want the failure reason to surface in `EvalScoreResult.sample["reason"]` and eventually in your CI output. That's the only way to attach a message the triage engineer will see next Monday morning:
+
+```python
+from agent_framework import CheckResult, evaluator
+
+
+@evaluator
+def no_hallucinated_prices(response: str, context: str) -> CheckResult:
+    import re
+    prices_in_response = set(re.findall(r"\$\d+(?:\.\d{2})?", response))
+    prices_in_context  = set(re.findall(r"\$\d+(?:\.\d{2})?", context or ""))
+    hallucinated = prices_in_response - prices_in_context
+
+    return CheckResult(
+        passed=not hallucinated,
+        reason=(
+            "all prices grounded in context"
+            if not hallucinated
+            else f"hallucinated prices not in context: {sorted(hallucinated)}"
+        ),
+        check_name="no_hallucinated_prices",
+    )
+```
+
+When it fails, every `EvalItemResult.scores` entry for that check keeps `sample={"reason": "hallucinated prices not in context: ['$19.99']"}` — drop that into Slack and the on-call engineer can act without opening the transcript UI.
+
 ## Patterns
 
 **Smoke test in CI.** A small `LocalEvaluator` with `keyword_check` + `tool_called_check` catches regressions caused by prompt edits without spending judge tokens.
