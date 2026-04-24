@@ -1621,7 +1621,7 @@ asyncio.run(main())
 from agent_framework.a2a import A2AAgent
 
 # Point at a remote A2A endpoint (any framework that speaks A2A).
-autogen_agent = A2AAgent(endpoint="https://research-agent.example.com/a2a")
+autogen_agent = A2AAgent(url="https://research-agent.example.com/a2a", name="Researcher")
 
 response = await autogen_agent.run("Research quantum computing trends")
 print(response.text)

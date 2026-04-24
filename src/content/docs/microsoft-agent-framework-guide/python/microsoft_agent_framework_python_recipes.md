@@ -332,16 +332,15 @@ async def run_workflow(topic: str):
 
     # 2. Build a sequential workflow: researcher -> analyst -> writer
     workflow = (
-        WorkflowBuilder()
-        .set_start_executor(researcher)
+        WorkflowBuilder(start_executor=researcher)
         .add_edge(researcher, analyst)
         .add_edge(analyst, writer)
         .build()
     )
 
     # 3. Execute — the starting message flows through each agent.
-    events = await workflow.run(f"Write a brief report on: {topic}")
-    print(events.get_final_output())
+    result = await workflow.run(f"Write a brief report on: {topic}")
+    print(result.get_outputs()[-1])
 
 if __name__ == "__main__":
     asyncio.run(run_workflow("AI Agents"))
