@@ -384,41 +384,70 @@ Plug that into a pytest test or a standalone CI step — the failing check name 
 
 ```python
 from agent_framework import (
+    Content,
     ConversationSplit,
     EvalItem,
     ExpectedToolCall,
     LocalEvaluator,
     Message,
     keyword_check,
-    tool_called_check,
+    tool_calls_present,
 )
 
 
 items = [
+    # Item 1 — a real production trace with a tool call. Note the function_call
+    # and function_result Content entries: tool_calls_present inspects
+    # conversation for these, matching them against expected_tool_calls.
     EvalItem(
         conversation=[
-            Message(role="user", contents=["What's the weather in Oslo?"]),
-            Message(role="assistant", contents=["It's -2°C and snowing in Oslo."]),
+            Message(role="user", contents=[Content.from_text("What's the weather in Oslo?")]),
+            Message(
+                role="assistant",
+                contents=[Content.from_function_call(
+                    call_id="call_1",
+                    name="get_weather",
+                    arguments={"location": "Oslo"},
+                )],
+            ),
+            Message(
+                role="tool",
+                contents=[Content.from_function_result(
+                    call_id="call_1",
+                    result={"temp_c": -2, "condition": "snow"},
+                )],
+            ),
+            Message(role="assistant", contents=[Content.from_text("It's -2°C and snowing in Oslo.")]),
         ],
         expected_tool_calls=[ExpectedToolCall("get_weather", {"location": "Oslo"})],
     ),
+    # Item 2 — plain text-only trace. No tool calls expected.
     EvalItem(
         conversation=[
-            Message(role="user", contents=["Summarise this doc."]),
-            Message(role="assistant", contents=["The doc is about X, Y, Z."]),
+            Message(role="user", contents=[Content.from_text("Summarise this doc.")]),
+            Message(role="assistant", contents=[Content.from_text("The doc is about X, Y, Z.")]),
         ],
         expected_output="The doc is about X, Y, Z.",
         split_strategy=ConversationSplit.LAST_TURN,
     ),
 ]
 
-local = LocalEvaluator(keyword_check("°C"), tool_called_check("get_weather"))
+# tool_calls_present reads item.expected_tool_calls — it's a no-op on items
+# that don't set it, so the second item passes the check trivially. Use
+# tool_called_check(name) only when your conversation actually contains
+# function_call Content entries for that name.
+local = LocalEvaluator(keyword_check("°C"), tool_calls_present)
 results = await local.evaluate(items, eval_name="offline-regression")
 
 print(results.status, results.result_counts)     # completed {'passed': 1, 'failed': 1, 'errored': 0}
 for item in results.items:
     print(item.item_id, item.status, [s.name for s in item.scores if not s.passed])
 ```
+
+- Item 1 passes both checks (response contains `°C`, expected `get_weather` call is present).
+- Item 2 fails `keyword_check("°C")` (its response doesn't mention temperature).
+
+Which check to use depends on what the recorded trace carries. `tool_called_check(name)` walks the conversation for `function_call` content and fails if that content isn't present — the right choice when you trust the trace format. `tool_calls_present` and `tool_call_args_match` compare the conversation's actual calls against `EvalItem.expected_tool_calls` — the right choice when different items have different expectations or some items have none.
 
 This keeps the evaluator loop cheap — no LLM calls, no network — ideal for replaying production traces in CI.
 
