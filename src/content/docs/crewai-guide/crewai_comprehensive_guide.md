@@ -4,7 +4,7 @@ description: "1. Introduction 2. Core Fundamentals 3. Simple Agents 4. Multi-Age
 framework: crewai
 ---
 
-Latest: 1.14.2 | Updated: April 19, 2026
+Latest: 1.14.3 | Updated: April 25, 2026
 # CrewAI Comprehensive Technical Guide
 ## From Beginner to Expert - Role-Based Agent Collaboration
 

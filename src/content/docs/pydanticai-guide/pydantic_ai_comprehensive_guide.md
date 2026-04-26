@@ -1,14 +1,14 @@
 ---
 title: "Pydantic AI: Comprehensive Technical Guide"
-description: "Version: 1.86.1 (April 2026) Framework: Pydantic AI - GenAI Agent Framework, the Pydantic Way Author Notes: Exhaustive technical documentation with production patterns, type safety"
+description: "Version: 1.87.0 (April 2026) Framework: Pydantic AI - GenAI Agent Framework, the Pydantic Way Author Notes: Exhaustive technical documentation with production patterns, type safety"
 framework: pydanticai
 ---
 
-Latest: 1.86.1 | Updated: April 24, 2026
+Latest: 1.87.0 | Updated: April 25, 2026
 # Pydantic AI: Comprehensive Technical Guide
 ## From Beginner to Expert Level
 
-**Version:** 1.86.1 (April 2026)  
+**Version:** 1.87.0 (April 2026)  
 **Framework:** Pydantic AI - GenAI Agent Framework, the Pydantic Way  
 **Author Notes:** Exhaustive technical documentation with production patterns, type safety emphasis, and FastAPI-inspired developer experience.
 
@@ -2050,10 +2050,105 @@ restricted = ModelProfile(
 
 ---
 
+## Capabilities API (v1.87.x): expanded toolkit
+
+PydanticAI 1.87.0 significantly expands the Capabilities system introduced in 1.86.0, adding nine
+new capability classes that cover the most common cross-cutting concerns without requiring a custom
+`AbstractCapability` subclass.
+
+### New capability classes
+
+All classes are importable from `pydantic_ai.capabilities` (confirmed against installed 1.87.0).
+
+| Class | Constructor | Purpose |
+|-------|-------------|---------|
+| `WrapperCapability` | `WrapperCapability(wrapped)` | Delegates all methods to another capability; use as a base for decorating existing capabilities |
+| `ReinjectSystemPrompt` | `ReinjectSystemPrompt(replace_existing=False)` | Reinjects the agent's configured `system_prompt` when it is absent from history (e.g. after conversation truncation) |
+| `ProcessHistory` | `ProcessHistory(processor)` | Runs a `HistoryProcessorFunc` before every model request to summarise, filter, or transform the message list |
+| `ProcessEventStream` | `ProcessEventStream(handler)` | Forwards the agent's event stream to an async handler function for custom logging or UI wiring |
+| `HandleDeferredToolCalls` | `HandleDeferredToolCalls(handler)` | Resolves `ExternalToolset` deferred tool calls inline during the run using a supplied handler |
+| `IncludeToolReturnSchemas` | `IncludeToolReturnSchemas(tools='all')` | Instructs selected tools to include their return schema in the tool definition (useful for models that infer output structure from schemas) |
+| `PrefixTools` | `PrefixTools(wrapped, prefix)` | Prepends a string to every tool name exposed by the wrapped capability — capability-level equivalent of `PrefixedToolset` |
+| `PrepareTools` | `PrepareTools(prepare_func)` | Runs a prepare function per step to filter or mutate tool definitions — capability-level equivalent of `PreparedToolset` |
+| `SetToolMetadata` | `SetToolMetadata(tools, metadata)` | Merges metadata key-value pairs onto selected tools — capability-level equivalent of `SetMetadataToolset` |
+
+### `ReinjectSystemPrompt` — guard against context truncation
+
+When using `HistoryProcessor` or external truncation, the system prompt can fall off the front
+of the message list. `ReinjectSystemPrompt` detects this and prepends it automatically.
+
+```python
+# Installed: pydantic-ai==1.87.0
+from pydantic_ai import Agent
+from pydantic_ai.capabilities import ReinjectSystemPrompt
+
+agent = Agent(
+    'openai:gpt-4o',
+    system_prompt='You are a concise assistant.',
+    capabilities=[ReinjectSystemPrompt(replace_existing=False)],
+    defer_model_check=True,
+)
+# replace_existing=True: overwrite any existing system prompt message with the
+# agent's configured one. replace_existing=False (default): only inject when absent.
+```
+
+Source: `pydantic_ai/capabilities/reinject_system_prompt.py` (installed 1.87.0).
+
+### `ProcessHistory` — composable history management
+
+`ProcessHistory` replaces the older pattern of subclassing `HistoryProcessor` directly.
+
+```python
+# Installed: pydantic-ai==1.87.0
+from pydantic_ai import Agent
+from pydantic_ai.capabilities import ProcessHistory
+
+async def keep_last_10(messages):
+    """Retain only the 10 most recent messages to cap token usage."""
+    return messages[-10:]
+
+agent = Agent(
+    'openai:gpt-4o',
+    capabilities=[ProcessHistory(keep_last_10)],
+    defer_model_check=True,
+)
+```
+
+Source: `pydantic_ai/capabilities/process_history.py` (installed 1.87.0).
+
+### `WrapperCapability` — composing custom capabilities
+
+`WrapperCapability` provides a base class for decorating or extending existing capabilities
+without re-implementing the full `AbstractCapability` interface.
+
+```python
+# Installed: pydantic-ai==1.87.0
+from pydantic_ai.capabilities import WrapperCapability, Hooks
+
+class LoggingWrapper(WrapperCapability):
+    """Adds before/after logging around any existing capability."""
+    def __init__(self, wrapped, label: str):
+        super().__init__(wrapped)
+        self.label = label
+
+hooks = Hooks()
+
+@hooks.on.before_model_request
+async def log_req(ctx, request_context):
+    return request_context
+
+logged_hooks = LoggingWrapper(hooks, label='my-agent')
+```
+
+Source: `pydantic_ai/capabilities/wrapper.py` (installed 1.87.0).
+
+---
+
 ## Revision History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.87.0 | April 25, 2026 | Expanded Capabilities API: 9 new capability classes (`WrapperCapability`, `ReinjectSystemPrompt`, `ProcessHistory`, `ProcessEventStream`, `HandleDeferredToolCalls`, `IncludeToolReturnSchemas`, `PrefixTools`, `PrepareTools`, `SetToolMetadata`); new type aliases (`RawToolArgs`, `ValidatedToolArgs`, `CapabilityRef`, `CapabilityPosition`, `CapabilityOrdering`); `CAPABILITY_TYPES` registry. New capabilities section added. All symbols confirmed against installed 1.87.0 (`pydantic_ai/capabilities/__init__.py`). |
 | 1.86.1 | April 24, 2026 | Patch fix for Capabilities API. Snippets executed against installed 1.86.1; `Hooks`, `ModelProfile`, `DEFAULT_PROFILE` all import successfully. New Capabilities API section added to this guide. |
 | 1.86.0 | April 23, 2026 | Introduces `capabilities` parameter on `Agent.__init__`; new `pydantic_ai.capabilities` module (`Hooks`, `AbstractCapability`, `CombinedCapability`, `HistoryProcessor`, `Thinking`, `ThreadExecutor`, `WebFetch`, `WebSearch`, `ImageGeneration`, `MCP`, `Toolset`); new `pydantic_ai.profiles` module (`ModelProfile`, `ModelProfileSpec`, `DEFAULT_PROFILE`); new `pydantic_ai.ui` module (`UIAdapter`, `UIEventStream`, `MessagesBuilder`). |
 | 1.85.1 | April 22, 2026 | Patch fix; `UrlContextTool` marked deprecated (use `WebFetchTool`). Built-in tools, embeddings, AG UI, and `ApprovalRequiredToolset` verified against installed package. `pydantic_ai.common_tools` stub corrected to `pydantic_ai.builtin_tools` with correct class names. Snippets executed against 1.85.1. |
