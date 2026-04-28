@@ -605,6 +605,148 @@ async def upper_case(
 
 `with_text(...)` matters: if your custom executor sends a plain `str` to the next `AgentExecutor`, only that string lands in the downstream agent's cache and the conversation history is lost. `AgentExecutorResponse.with_text(...)` keeps the message type, so `from_response` is invoked instead of `from_str` and history is preserved.
 
+For class-based executors with multiple handlers — and per-instance state that survives across invocations — subclass `Executor` directly:
+
+```python
+from agent_framework import Executor, WorkflowContext, handler
+
+
+class CounterExecutor(Executor):
+    def __init__(self) -> None:
+        super().__init__(id="counter")
+        self._count = 0
+
+    @handler
+    async def tick(self, _: str, ctx: WorkflowContext[str, str]) -> None:
+        self._count += 1
+        await ctx.send_message(f"count={self._count}")
+
+    @handler
+    async def reset(self, _: int, ctx: WorkflowContext[str]) -> None:
+        # Distinct input type → distinct handler. The framework dispatches
+        # on the runtime type of the message.
+        self._count = 0
+        await ctx.send_message("reset")
+```
+
+The `@handler` decorator infers the input/output types from the parameter annotations. When you need forward references, union types you'd rather not import, or are building executors dynamically, use the **explicit-types** form. **All** types must come from decorator parameters — annotation-based introspection is disabled the moment any explicit param is supplied:
+
+```python
+@handler(input=str | int, output=bool, workflow_output=str)
+async def handle_data(self, message, ctx):
+    # No annotations on message/ctx. Types come from the decorator.
+    if isinstance(message, str):
+        await ctx.send_message(True)
+    await ctx.yield_output(f"saw {type(message).__name__}")
+
+
+# String forward references resolve against the decorated function's globals.
+@handler(input="MyEvent", output="ResponseType")
+async def handle_custom(self, message, ctx): ...
+```
+
+### Routing patterns — fan-out, fan-in, switch-case
+
+Beyond linear `add_edge`, `WorkflowBuilder` exposes four routing primitives. Pick the one that matches the topology you want.
+
+**Fan-out** — broadcast one source to many targets:
+
+```python
+workflow = (
+    WorkflowBuilder(start_executor=parser)
+    .add_fan_out_edges(parser, [enricher_a, enricher_b, enricher_c])
+    .build()
+)
+```
+
+**Fan-in** — converge many sources onto one target. The target's handler receives the **list** of upstream messages, so its input type must be `list[T]`:
+
+```python
+from typing import Never
+
+
+class Aggregator(Executor):
+    @handler
+    async def aggregate(
+        self,
+        results: list[str],          # one entry per fan-in source
+        ctx: WorkflowContext[Never, str],
+    ) -> None:
+        await ctx.yield_output(" | ".join(results))
+
+
+workflow = (
+    WorkflowBuilder(start_executor=parser)
+    .add_fan_out_edges(parser, [worker_a, worker_b, worker_c])
+    .add_fan_in_edges([worker_a, worker_b, worker_c], Aggregator())
+    .build()
+)
+```
+
+**Switch-case** — first-match routing on a payload predicate. Always include a `Default(...)` to catch the fall-through:
+
+```python
+from dataclasses import dataclass
+from agent_framework import Case, Default, Executor, WorkflowBuilder, WorkflowContext, handler
+
+
+@dataclass
+class Result:
+    score: int
+
+
+class Evaluator(Executor):
+    @handler
+    async def evaluate(self, text: str, ctx: WorkflowContext[Result]) -> None:
+        await ctx.send_message(Result(score=len(text)))
+
+
+workflow = (
+    WorkflowBuilder(start_executor=Evaluator(id="eval"))
+    .add_switch_case_edge_group(
+        Evaluator(id="eval"),
+        [
+            Case(condition=lambda r: r.score > 100, target=long_form_handler),
+            Case(condition=lambda r: r.score > 10, target=mid_handler),
+            Default(target=short_handler),
+        ],
+    )
+    .build()
+)
+```
+
+Conditions evaluate top-to-bottom — the first one that returns truthy wins. The `Default` branch fires only if none matched.
+
+**Multi-selection** — like fan-out, but a `selection_func(message, target_ids)` returns the *subset* of targets that should receive each payload:
+
+```python
+def select_workers(task, available: list[str]) -> list[str]:
+    return available if task.priority == "high" else [available[0]]
+
+
+workflow = (
+    WorkflowBuilder(start_executor=dispatcher)
+    .add_multi_selection_edge_group(dispatcher, [worker_a, worker_b], selection_func=select_workers)
+    .build()
+)
+```
+
+Use `add_chain([a, b, c])` as a shortcut for `.add_edge(a, b).add_edge(b, c)` when you have a long linear pipeline.
+
+### Visualizing a workflow
+
+`WorkflowViz` ships with the framework — render any built workflow to Mermaid (no extra deps), DOT, or SVG/PNG/PDF (needs `graphviz`):
+
+```python
+from agent_framework import WorkflowViz
+
+viz = WorkflowViz(workflow)
+print(viz.to_mermaid())            # paste into Markdown
+viz.save_svg("workflow.svg")       # needs `pip install graphviz>=0.20.0` + the dot binary
+```
+
+Pass `include_internal_executors=True` when you're debugging routing — the diagram then includes the framework's auto-injected glue nodes.
+
 ### Workflow checkpointing
 
 Pass a `CheckpointStorage` to the builder and every superstep saves automatically:
