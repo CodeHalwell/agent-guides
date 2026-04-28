@@ -41,7 +41,7 @@ graph TD
 
 ## 2. Agent Lifecycle (AsyncIO)
 
-The lifecycle of a Python agent within an `asyncio` event loop. State across turns is held in an `AgentSession` (paired with a `HistoryProvider` like `InMemoryHistoryProvider` or `FileHistoryProvider`).
+The lifecycle of a Python agent within an `asyncio` event loop. The `AgentSession` is a lightweight state container that carries `session_id` and a mutable `state` dict; the actual messages are held by a `HistoryProvider` (`InMemoryHistoryProvider`, `FileHistoryProvider`, etc.) that the `Agent` drives at the start and end of each run.
 
 ```mermaid
 sequenceDiagram
@@ -51,18 +51,17 @@ sequenceDiagram
     participant Provider as HistoryProvider
     participant LLM as LLM Service
 
-    App->>Agent: Agent(client=..., instructions=..., tools=[...])
+    App->>Agent: Agent(client=..., instructions=..., tools=[...], context_providers=[provider])
 
     App->>Agent: create_session(session_id="user-42")
     Agent-->>Session: Returns AgentSession instance
 
-    Provider->>Session: get_messages() — load prior turns
-
     loop Conversation Loop
         App->>Agent: run(user_input, session=session)
         activate Agent
-        Agent->>Session: append user message
-        Agent->>LLM: send messages + tools
+        Agent->>Provider: get_messages(session_id, state=session.state)
+        Provider-->>Agent: prior conversation messages
+        Agent->>LLM: send (prior + user_input) + tools
 
         alt Tool Call Required
             LLM-->>Agent: function_call content
@@ -73,7 +72,7 @@ sequenceDiagram
             LLM-->>Agent: assistant message
         end
 
-        Agent->>Provider: save_messages(...)
+        Agent->>Provider: save_messages(session_id, [user_input, assistant_msg], state=session.state)
         Agent-->>App: AgentResponse
         deactivate Agent
     end

@@ -649,6 +649,8 @@ async def handle_custom(self, message, ctx): ...
 
 Beyond linear `add_edge`, `WorkflowBuilder` exposes four routing primitives. Pick the one that matches the topology you want.
 
+The snippets below use placeholder names (`parser`, `enricher_a`, `worker_a`, `dispatcher`, etc.) for the executors being wired up. Substitute concrete `AgentExecutor(Agent(...))` instances or your own `Executor` subclasses — the wiring API is the same regardless of executor type.
+
 **Fan-out** — broadcast one source to many targets:
 
 ```python
@@ -701,10 +703,13 @@ class Evaluator(Executor):
         await ctx.send_message(Result(score=len(text)))
 
 
+# Reuse the same executor instance — the builder keys nodes by id, so a second
+# Evaluator(id="eval") would clash on registration.
+evaluator = Evaluator(id="eval")
 workflow = (
-    WorkflowBuilder(start_executor=Evaluator(id="eval"))
+    WorkflowBuilder(start_executor=evaluator)
     .add_switch_case_edge_group(
-        Evaluator(id="eval"),
+        evaluator,
         [
             Case(condition=lambda r: r.score > 100, target=long_form_handler),
             Case(condition=lambda r: r.score > 10, target=mid_handler),
@@ -773,13 +778,11 @@ inner = (
 )
 
 # Outer workflow: the inner pipeline becomes a single node, followed by a publisher.
+draft_pipeline = WorkflowExecutor(inner, id="draft-pipeline")
 publisher = AgentExecutor(Agent(client=client, name="publisher"))
 outer = (
-    WorkflowBuilder(
-        start_executor=WorkflowExecutor(inner, id="draft-pipeline"),
-        name="publish-pipeline",
-    )
-    .add_edge(WorkflowExecutor(inner, id="draft-pipeline"), publisher)
+    WorkflowBuilder(start_executor=draft_pipeline, name="publish-pipeline")
+    .add_edge(draft_pipeline, publisher)
     .build()
 )
 ```

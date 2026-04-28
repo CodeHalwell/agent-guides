@@ -192,7 +192,8 @@ pip install agent-framework-declarative --pre
 ```python
 from agent_framework.declarative import AgentFactory
 
-agent = AgentFactory.create_from_yaml_path("agent.yaml")
+factory = AgentFactory()
+agent = factory.create_agent_from_yaml_path("agent.yaml")
 result = await agent.run("Hello")
 ```
 

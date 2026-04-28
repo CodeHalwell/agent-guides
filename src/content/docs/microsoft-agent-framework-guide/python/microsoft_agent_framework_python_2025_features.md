@@ -140,26 +140,31 @@ from agent_framework import Agent, chat_middleware, ChatContext
 from agent_framework.foundry import FoundryChatClient
 from azure.identity.aio import DefaultAzureCredential
 
+
 @chat_middleware
-async def logging_middleware(context: ChatContext, next):
+async def logging_middleware(context: ChatContext, call_next):
     print(f"before: {len(context.messages)} messages")
-    await next(context)
+    await call_next()                              # zero-argument — data flows through context
     print(f"after: {context.result}")
+
 
 agent = Agent(
     client=FoundryChatClient(credential=DefaultAzureCredential(), model="gpt-4o"),
     instructions="You are a helpful assistant.",
-    middleware=[logging_middleware],  # must be a list in 2026 releases
+    middleware=[logging_middleware],               # must be a list in 2026 releases
 )
 ```
 
-Breaking changes in the 2026 beta line (verified against release notes):
+`call_next` is `Callable[[], Awaitable[None]]` — no arguments. All data flows through the `context` object; set `context.result = ...` to short-circuit, or raise `MiddlewareTermination` to unwind. Full coverage in the [middleware page](./microsoft_agent_framework_python_middleware/).
+
+Breaking changes in the 2026 beta line (verified against `agent-framework-core==1.2.1`):
 
 - `display_name` parameter removed from agents.
-- `context_providers` (plural list) renamed to `context_provider` (singular; only one provider allowed).
 - `middleware` now requires a list — no longer accepts a single instance.
 - `AgentRunResponse` / `AgentRunResponseUpdate` renamed to `AgentResponse` / `AgentResponseUpdate`.
 - `AggregateContextProvider` removed — build your own aggregator from examples.
+
+`context_providers` (plural `Sequence[ContextProvider]`) is **still the parameter name** in 1.2.1, contrary to earlier drafts of this guide. An earlier note on this page incorrectly claimed a rename to singular `context_provider`; that change never landed. Multiple providers compose freely (e.g. `[history, compaction, mem0]`).
 
 ## OpenTelemetry observability
 
@@ -264,9 +269,10 @@ writer = Agent(
 )
 
 
-# Blocks the current process — uvicorn under the hood.
+# Blocks the current process — uvicorn under the hood. Pass any mix of
+# Agent instances and built Workflow objects via entities=[...].
 serve(
-    entities=[writer, my_workflow],            # mix agents and workflows
+    entities=[writer],                         # also accepts Workflow objects in the same list
     host="127.0.0.1",
     port=8080,
     auto_open=True,                            # pop the browser

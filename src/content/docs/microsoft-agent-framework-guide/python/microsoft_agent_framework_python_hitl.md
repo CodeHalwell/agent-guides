@@ -107,7 +107,13 @@ result = await workflow.run(responses={"<id>": "technical"})
 `@response_handler` defaults to introspecting parameter annotations. When you're using forward references (the request/response classes are imported lazily), or you're building executors dynamically and don't want to lock the parameter types, switch to the **explicit-types** form. **All** types must come from decorator parameters in this mode — annotation-based introspection is disabled.
 
 ```python
+from dataclasses import dataclass
 from agent_framework import Executor, WorkflowContext, handler, response_handler
+
+
+@dataclass
+class Approval:
+    draft: str
 
 
 class Approver(Executor):
