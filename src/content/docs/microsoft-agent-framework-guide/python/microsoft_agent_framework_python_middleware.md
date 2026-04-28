@@ -221,6 +221,61 @@ class StreamingRedactor(ChatMiddleware):
         await call_next()
 ```
 
+## Streaming hooks on `ChatContext`
+
+When `context.stream is True`, `context.result` is a `ResponseStream[ChatResponseUpdate, ChatResponse]` — you can't just rewrite it the way you'd rewrite a `ChatResponse`. Instead, register hooks that run at three distinct points of the stream's lifecycle:
+
+| Hook | Fires | Use for |
+|---|---|---|
+| `stream_transform_hooks` | Once per yielded `ChatResponseUpdate` | Mask PII / inject metadata / rewrite tokens as they stream |
+| `stream_result_hooks` | Once on the finalised `ChatResponse` (after the stream completes) | Final-pass cleanup, audit logging, trace linking |
+| `stream_cleanup_hooks` | Once after the stream is fully consumed (before the finaliser) | Flush a metric, close a span, release a lock |
+
+Each list accepts sync **or** async callables. Add to it before calling `call_next()` so the hook runs against the stream the underlying client returns.
+
+```python
+import re
+from agent_framework import ChatMiddleware, ChatContext, ChatResponseUpdate
+
+PHONE_RE = re.compile(r"\+?\d[\d -]{8,}\d")
+
+
+class StreamingPiiRedactor(ChatMiddleware):
+    async def process(self, context: ChatContext, call_next) -> None:
+        # Transform every chunk as it arrives.
+        async def redact_chunk(update: ChatResponseUpdate) -> ChatResponseUpdate:
+            for content in update.contents or []:
+                text = getattr(content, "text", None)
+                if text:
+                    content.text = PHONE_RE.sub("[redacted-phone]", text)
+            return update
+
+        # Run a final pass on the assembled response (in case anything slipped through).
+        async def final_pass(response):
+            for msg in response.messages:
+                for content in msg.contents:
+                    text = getattr(content, "text", None)
+                    if text:
+                        content.text = PHONE_RE.sub("[redacted-phone]", text)
+            return response
+
+        # Always clean up — even if the consumer aborts mid-stream.
+        async def close_span():
+            metrics.record("chat.stream.completed", labels={"middleware": "pii"})
+
+        context.stream_transform_hooks.append(redact_chunk)
+        context.stream_result_hooks.append(final_pass)
+        context.stream_cleanup_hooks.append(close_span)
+        await call_next()
+```
+
+A few practical notes:
+
+- **Hook order matters** — hooks run in the order they were registered. Stack the cheap deterministic redactor before the expensive LLM-based moderation hook so the cleaner output reaches the moderator.
+- **Sync hooks are fine** — the framework `await`s anything that returns an awaitable and otherwise calls the hook directly.
+- **Don't mix `context.result = ...` with hooks** — for streaming, set the hooks; the framework wires them into the live stream. Setting `context.result` to a fresh `ResponseStream` wholesale only makes sense for synthetic short-circuit responses.
+- **Mirroring for non-streaming.** `AgentContext` exposes the same trio (`stream_transform_hooks` / `stream_result_hooks` / `stream_cleanup_hooks`) for agent-level streaming — register them there if you want the redactor to apply across every chat call inside one agent run.
+
 ## Passing per-run data through the pipeline
 
 All three context classes expose a mutable `metadata` dict. Use it to hand data down the chain or up to the caller:

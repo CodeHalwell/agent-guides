@@ -388,6 +388,30 @@ summariser = AgentExecutor(
 )
 ```
 
+### Cache-only sends — `AgentExecutorRequest(should_respond=False)`
+
+When you want an upstream node to *prime* a downstream `AgentExecutor` with extra context but *not* trigger a model call yet, send an `AgentExecutorRequest` with `should_respond=False`:
+
+```python
+from agent_framework import AgentExecutorRequest, Message, WorkflowContext, executor
+
+
+@executor(id="prime")
+async def prime(_: str, ctx: WorkflowContext[AgentExecutorRequest]) -> None:
+    # Push a system note into the next executor's cache without invoking the model.
+    ctx_msg = Message(role="user", contents=["Today's tenant is acme. Use the acme tone."])
+    await ctx.send_message(AgentExecutorRequest(messages=[ctx_msg], should_respond=False))
+
+
+@executor(id="ask")
+async def ask(_: str, ctx: WorkflowContext[AgentExecutorRequest]) -> None:
+    # On the next hop, the cached priming message is already in scope.
+    ctx_msg = Message(role="user", contents=["Draft the welcome email."])
+    await ctx.send_message(AgentExecutorRequest(messages=[ctx_msg], should_respond=True))
+```
+
+This is the formal way to interleave deterministic state injection with model calls in the same `AgentExecutor`. The cache survives across messages until the next request with `should_respond=True` arrives — at which point the agent sees the full priming history followed by the actual prompt.
+
 ### Transforming agent output — `AgentExecutorResponse.with_text`
 
 A custom executor inserted between two `AgentExecutor` nodes can transform the text without breaking the context chain. The catch: if you just emit a plain `str`, the next `AgentExecutor.from_str` handler wipes the cache because only the string lands. Use `AgentExecutorResponse.with_text(...)` instead — the framework keeps the full prior conversation and only substitutes the final assistant message:
@@ -677,6 +701,161 @@ workflow = (
 ```
 
 `Default` is not optional — the framework guarantees every message lands somewhere, even if no `Case` predicate matches. Point its target at a dead-letter executor if that's the correct behaviour for "I have no idea what to do with this."
+
+### Constructing `FunctionExecutor` directly
+
+`@executor` is the everyday entry point — it wraps a standalone module-level function in a `FunctionExecutor`. Construct the class directly when you need to:
+
+- Pass an explicit `input` / `output` / `workflow_output` type that overrides what introspection finds (or when the function lacks annotations).
+- Build executors dynamically from configuration (loop over a registry of handler callables).
+- Construct from string forward references (`input="MyType | int"`) without `from __future__ import annotations` boilerplate.
+
+```python
+from agent_framework import FunctionExecutor, WorkflowContext
+
+
+# Sync function — runs in the asyncio thread pool, no event loop blocked.
+def normalise(text: str) -> str:
+    return text.strip().lower()
+
+
+normalise_node = FunctionExecutor(
+    normalise,
+    id="normalise",
+    input=str,
+    output=str,
+)
+
+# Async function with explicit, narrower output types — handy when introspection
+# would pick up a wider union from the WorkflowContext type parameter.
+async def classify(text: str, ctx: WorkflowContext[str, str]) -> None:
+    label = "billing" if "invoice" in text else "general"
+    await ctx.send_message(label)
+
+
+classify_node = FunctionExecutor(classify, id="classify", output=str)
+```
+
+A few rules the constructor enforces — each raises `ValueError` at build time so wiring bugs surface before the workflow runs:
+
+- **Standalone functions only.** Passing a `staticmethod` or `classmethod` raises with a hint to use the `Executor` base class + `@handler` instead.
+- **Either 1 or 2 parameters.** `(message)` or `(message, ctx)`. Three or more is rejected.
+- **Message annotation required** unless `input=` is supplied explicitly. Generic `TypeVar`s aren't allowed — give a concrete type.
+
+`@executor` is just sugar over this constructor — the equivalent decorator form is `@executor(id="normalise", input=str, output=str)`. Use the class form when you want to keep the executor reference local rather than turning the function name into a module-level executor instance.
+
+### Async predicates on edges
+
+`Edge.condition` and the predicates inside `Case(...)` may be **either sync or async** — `EdgeCondition` is `Callable[[Any], bool | Awaitable[bool]]`. Use this when routing depends on an out-of-band check (auth lookup, feature flag, vector lookup) that you don't want to block the event loop on:
+
+```python
+from agent_framework import Case, Default, WorkflowBuilder
+
+
+async def is_premium_tenant(msg: dict) -> bool:
+    return await tenant_lookup.is_premium(msg["tenant_id"])    # async I/O
+
+
+builder = (
+    WorkflowBuilder(start_executor=triage)
+    .add_switch_case_edge_group(
+        source=triage,
+        cases=[
+            Case(condition=is_premium_tenant, target=premium_route),
+            Default(target=standard_route),
+        ],
+    )
+)
+```
+
+The framework `await`s the coroutine and treats the boolean result as the routing decision. Wrap the lookup in a cache or short timeout — predicates run on the hot path between supersteps, so a slow predicate stalls the entire workflow.
+
+### Building edge groups directly — `SwitchCaseEdgeGroup`, `FanOutEdgeGroup`, `FanInEdgeGroup`
+
+The builder helpers (`.add_switch_case_edge_group`, `.add_fan_out_edges`, `.add_fan_in_edges`) wrap these classes. Constructing them yourself is useful when:
+
+- You're persisting a workflow definition and need stable, hand-written ids on each edge group.
+- You're introspecting the topology programmatically (debug tooling, viz layers) and want to round-trip through `to_dict()` / `from_dict()`.
+- You need to register the same `FanOutEdgeGroup` against multiple parent workflows.
+
+```python
+from agent_framework import (
+    FanInEdgeGroup,
+    FanOutEdgeGroup,
+    SwitchCaseEdgeGroup,
+    SwitchCaseEdgeGroupCase,
+    SwitchCaseEdgeGroupDefault,
+    WorkflowBuilder,
+)
+
+# Fan-out: one upstream → many. Constructor enforces ≥ 2 targets.
+broadcast = FanOutEdgeGroup(
+    source_id="dispatcher",
+    target_ids=["worker_a", "worker_b", "worker_c"],
+    id="primary-broadcast",                   # stable id (optional)
+)
+assert broadcast.target_ids == ["worker_a", "worker_b", "worker_c"]
+assert broadcast.selection_func is None      # no selector → all targets receive
+
+# Fan-in: many sources → one target. Also enforces ≥ 2 sources.
+collector = FanInEdgeGroup(
+    source_ids=["worker_a", "worker_b", "worker_c"],
+    target_id="merger",
+    id="merger-fanin",
+)
+
+# Switch/case: each Case carries its predicate; one Default is mandatory.
+switch = SwitchCaseEdgeGroup(
+    source_id="router",
+    cases=[
+        SwitchCaseEdgeGroupCase(
+            condition=lambda payload: payload["kind"] == "csv",
+            target_id="csv_handler",
+        ),
+        SwitchCaseEdgeGroupCase(
+            condition=lambda payload: payload["kind"] == "json",
+            target_id="json_handler",
+        ),
+        SwitchCaseEdgeGroupDefault(target_id="dead_letter"),
+    ],
+)
+
+# Each edge group has a stable to_dict() shape — useful for diffing or logging.
+snapshot = switch.to_dict()
+assert snapshot["cases"][0]["type"] == "Case"
+assert snapshot["cases"][-1]["type"] == "Default"
+```
+
+Key constraints surfaced by the constructors (each raises `ValueError` early so wiring bugs fail at workflow build time, not at run time):
+
+- `FanOutEdgeGroup` — minimum 2 targets. For 1:1, use `.add_edge(source, target)`.
+- `FanInEdgeGroup` — minimum 2 sources. For 1:1, use `.add_edge(source, target)`.
+- `SwitchCaseEdgeGroup` — minimum 2 cases including the default; **exactly one** `SwitchCaseEdgeGroupDefault`. The framework warns (rather than errors) if `Default` isn't last, but cases evaluate top-to-bottom so an early `Default` short-circuits everything after it.
+- `SwitchCaseEdgeGroupCase` — `target_id` is required and non-empty.
+
+Once built, register the group with `WorkflowBuilder.add_edge_group(...)` (the low-level entry point that all the helpers funnel into):
+
+```python
+builder = WorkflowBuilder(start_executor=dispatcher)
+builder.add_edge_group(broadcast)
+builder.add_edge_group(collector)
+```
+
+#### Round-tripping through serialised form
+
+When a callable can't be persisted (lambdas, closures, instance methods on objects unavailable at load time), supply `selection_func_name=` (fan-out) or `condition_name=` (switch case) so the deserialised group can re-resolve the callable from your registry:
+
+```python
+restored = SwitchCaseEdgeGroupCase.from_dict({
+    "target_id": "csv_handler",
+    "condition_name": "is_csv_payload",
+})
+# `restored.condition` is now a placeholder that raises RuntimeError if invoked —
+# replace it before running the workflow:
+restored._condition = condition_registry["is_csv_payload"]
+```
+
+The `_missing_callable` placeholder fails loudly (`RuntimeError: Callable 'is_csv_payload' is unavailable after serialization`) so a forgotten registration crashes the run instead of silently routing to the wrong branch.
 
 ## Streaming events
 

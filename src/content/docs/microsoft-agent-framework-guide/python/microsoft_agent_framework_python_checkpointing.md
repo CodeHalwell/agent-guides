@@ -44,35 +44,104 @@ For Azure Cosmos DB, install `agent-framework-azure-cosmos` and use `agent_frame
 
 ### Custom backend
 
-Implement the protocol — structural typing, no inheritance needed:
+`CheckpointStorage` is a `Protocol` — structural typing means anything with the six required `async` methods satisfies it. No `isinstance` or inheritance check happens at attach time, only the duck-typed call. The full surface area:
 
 ```python
-from dataclasses import asdict
-import json, aioboto3
-from agent_framework import CheckpointStorage, WorkflowCheckpoint
-
-
-class S3CheckpointStorage:
-    def __init__(self, bucket: str, prefix: str = "checkpoints/") -> None:
-        self._bucket = bucket
-        self._prefix = prefix
-
-    async def save(self, checkpoint: WorkflowCheckpoint) -> str:
-        key = f"{self._prefix}{checkpoint.workflow_name}/{checkpoint.checkpoint_id}.json"
-        async with aioboto3.Session().client("s3") as s3:
-            await s3.put_object(
-                Bucket=self._bucket,
-                Key=key,
-                Body=json.dumps(asdict(checkpoint)).encode(),
-            )
-        return checkpoint.checkpoint_id
-
+class CheckpointStorage(Protocol):
+    async def save(self, checkpoint: WorkflowCheckpoint) -> str: ...
     async def load(self, checkpoint_id: str) -> WorkflowCheckpoint: ...
     async def list_checkpoints(self, *, workflow_name: str) -> list[WorkflowCheckpoint]: ...
     async def delete(self, checkpoint_id: str) -> bool: ...
     async def get_latest(self, *, workflow_name: str) -> WorkflowCheckpoint | None: ...
     async def list_checkpoint_ids(self, *, workflow_name: str) -> list[str]: ...
 ```
+
+A complete S3-backed implementation that handles JSON encoding, `WorkflowCheckpointException` semantics, and reuses one `aioboto3` session across calls:
+
+```python
+import json
+from dataclasses import asdict
+from datetime import datetime
+import aioboto3
+from agent_framework import WorkflowCheckpoint, WorkflowCheckpointException
+
+
+class S3CheckpointStorage:
+    def __init__(self, bucket: str, prefix: str = "checkpoints/") -> None:
+        self._bucket = bucket
+        self._prefix = prefix.rstrip("/") + "/"
+        self._session = aioboto3.Session()
+
+    def _key(self, workflow_name: str, checkpoint_id: str) -> str:
+        return f"{self._prefix}{workflow_name}/{checkpoint_id}.json"
+
+    async def save(self, checkpoint: WorkflowCheckpoint) -> str:
+        key = self._key(checkpoint.workflow_name, checkpoint.checkpoint_id)
+        async with self._session.client("s3") as s3:
+            await s3.put_object(
+                Bucket=self._bucket,
+                Key=key,
+                Body=json.dumps(asdict(checkpoint)).encode(),
+                ContentType="application/json",
+            )
+        return checkpoint.checkpoint_id
+
+    async def load(self, checkpoint_id: str) -> WorkflowCheckpoint:
+        # S3 doesn't index by checkpoint_id alone — scan and match.
+        async with self._session.client("s3") as s3:
+            paginator = s3.get_paginator("list_objects_v2")
+            async for page in paginator.paginate(Bucket=self._bucket, Prefix=self._prefix):
+                for obj in page.get("Contents", []):
+                    if obj["Key"].endswith(f"/{checkpoint_id}.json"):
+                        body = await s3.get_object(Bucket=self._bucket, Key=obj["Key"])
+                        data = json.loads(await body["Body"].read())
+                        return WorkflowCheckpoint.from_dict(data)
+        raise WorkflowCheckpointException(f"No checkpoint found with ID {checkpoint_id}")
+
+    async def list_checkpoints(self, *, workflow_name: str) -> list[WorkflowCheckpoint]:
+        prefix = f"{self._prefix}{workflow_name}/"
+        out: list[WorkflowCheckpoint] = []
+        async with self._session.client("s3") as s3:
+            paginator = s3.get_paginator("list_objects_v2")
+            async for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    body = await s3.get_object(Bucket=self._bucket, Key=obj["Key"])
+                    out.append(WorkflowCheckpoint.from_dict(json.loads(await body["Body"].read())))
+        return out
+
+    async def list_checkpoint_ids(self, *, workflow_name: str) -> list[str]:
+        prefix = f"{self._prefix}{workflow_name}/"
+        ids: list[str] = []
+        async with self._session.client("s3") as s3:
+            paginator = s3.get_paginator("list_objects_v2")
+            async for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    # key shape: {prefix}{workflow_name}/{checkpoint_id}.json
+                    ids.append(obj["Key"].rsplit("/", 1)[-1].removesuffix(".json"))
+        return ids
+
+    async def get_latest(self, *, workflow_name: str) -> WorkflowCheckpoint | None:
+        checkpoints = await self.list_checkpoints(workflow_name=workflow_name)
+        if not checkpoints:
+            return None
+        return max(checkpoints, key=lambda c: datetime.fromisoformat(c.timestamp))
+
+    async def delete(self, checkpoint_id: str) -> bool:
+        async with self._session.client("s3") as s3:
+            paginator = s3.get_paginator("list_objects_v2")
+            async for page in paginator.paginate(Bucket=self._bucket, Prefix=self._prefix):
+                for obj in page.get("Contents", []):
+                    if obj["Key"].endswith(f"/{checkpoint_id}.json"):
+                        await s3.delete_object(Bucket=self._bucket, Key=obj["Key"])
+                        return True
+        return False
+```
+
+Three things to mirror from `FileCheckpointStorage` when rolling your own backend:
+
+- **Atomic writes.** The built-in writes `<id>.json.tmp` then `os.replace` for crash safety. S3 `put_object` is atomic; for filesystem-derived backends (NFS, a custom on-disk format), keep the write-then-rename pattern.
+- **Path / id validation.** `FileCheckpointStorage._validate_file_path` rejects ids that resolve outside the storage root (path traversal). For S3 the equivalent is asserting the key starts with your prefix; for any backend, never blindly concatenate user-influenced ids into a path.
+- **Raise `WorkflowCheckpointException` on miss.** The framework treats `load` failures as a recoverable "no such checkpoint" and surfaces the message — don't let the underlying client error bubble up unwrapped.
 
 ## Attaching storage to a workflow
 
