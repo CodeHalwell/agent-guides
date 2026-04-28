@@ -67,12 +67,69 @@ Workflows support **checkpointing** via `FileCheckpointStorage` / `InMemoryCheck
 
 `agent-framework-declarative` provides `AgentFactory` (single agent from YAML) and `WorkflowFactory` (multi-agent workflow from YAML). Actions are a Power-Fx-expression dialect — `SetVariable`, `InvokeAzureAgent`, `InvokeFunctionTool`, `If`, `Foreach`, `RepeatUntil`, `Question`, `Confirmation`, `SendActivity`, etc. Full reference: [Microsoft Learn — Declarative Workflows](https://learn.microsoft.com/agent-framework/workflows/declarative/).
 
+### `AgentFactory` — load a single agent from YAML
+
+The factory parses a `kind: Prompt` YAML definition, picks the chat-client class from the `model.provider` field (`AzureOpenAI`, `OpenAI`, `Foundry`, …), and returns a configured `Agent` ready for `agent.run(...)`.
+
 ```python
 from agent_framework.declarative import AgentFactory
 
-agent = AgentFactory.create_from_yaml_path("agent.yaml")
-result = await agent.run("Hello")
+
+# Method 1: from a YAML file path
+factory = AgentFactory()
+agent = factory.create_agent_from_yaml_path("agent.yaml")
+response = await agent.run("Hello!")
+
+
+# Method 2: from inline YAML
+yaml_content = """
+kind: Prompt
+name: GreetingAgent
+instructions: You are a friendly assistant.
+model:
+  id: gpt-4o
+  provider: AzureOpenAI
+"""
+agent = factory.create_agent_from_yaml(yaml_content)
 ```
+
+Two security-relevant knobs on the factory constructor:
+
+- `safe_mode=True` (default) blocks `=Env.*` Power-Fx lookups in the YAML so untrusted YAML can't read your environment. Flip to `False` only for YAML you fully control.
+- `additional_mappings={...}` extends the built-in provider table — point a custom `Provider.ApiType` key at your own `SupportsChatGetResponse` implementation when you want to instantiate non-first-party clients from YAML.
+
+If you've already constructed a chat client (shared connection pool, custom credentials), pass it via `client=` so the factory reuses it instead of building a fresh one from the YAML's `model:` block.
+
+### `WorkflowFactory` — load a multi-action workflow from YAML
+
+`WorkflowFactory` parses `kind: Workflow` YAML and returns a real `Workflow` object — every action becomes a node in the graph, so checkpointing, visualization, and pause/resume work the same as a code-built workflow.
+
+```python
+from agent_framework import FileCheckpointStorage
+from agent_framework.declarative import WorkflowFactory
+from agent_framework.openai import OpenAIChatClient
+
+
+client = OpenAIChatClient()
+
+# Pre-register agents that the workflow YAML references via `kind: InvokeAzureAgent`.
+factory = WorkflowFactory(
+    agents={
+        "Writer": client.as_agent(name="Writer", instructions="Write content."),
+        "Reviewer": client.as_agent(name="Reviewer", instructions="Review content."),
+    },
+    checkpoint_storage=FileCheckpointStorage("./checkpoints"),
+    max_iterations=200,           # raise the default 100 for GotoAction loops
+)
+
+workflow = factory.create_workflow_from_yaml_path("review_pipeline.yaml")
+
+async for event in workflow.run({"input": "draft the agent-framework launch post"}, stream=True):
+    if event.type == "output":
+        print(event.data)
+```
+
+Pre-registering agents (`agents={...}`) is the common pattern when the same agent definition is reused across many workflows. For one-off agents, embed the `Prompt` definition inline in the YAML and let the inner `AgentFactory` build them.
 
 ## Middleware & hooks
 
@@ -153,6 +210,83 @@ The framework is async-first:
 - Chat clients implement the `SupportsChatGetResponse` protocol — `await client.get_response(...)`.
 - Checkpoint storage (`FileCheckpointStorage`, `InMemoryCheckpointStorage`) exposes awaitable `save` / `load` / `get_latest`.
 - `A2AAgent` uses `httpx.AsyncClient` under the hood; pass your own if you need custom TLS / retry / auth.
+
+## Mem0 — semantic long-term memory
+
+`agent-framework-mem0` ships `Mem0ContextProvider` — a `ContextProvider` that searches a Mem0-hosted memory store before each run and persists request+response messages after. Use it for cross-session recall ("the user prefers metric units"), facts you want to surface independently of the conversation history.
+
+```python
+from agent_framework import Agent, FileHistoryProvider
+from agent_framework.mem0 import Mem0ContextProvider
+from agent_framework.openai import OpenAIChatClient
+
+
+memory = Mem0ContextProvider(
+    api_key="m0_...",                    # or set MEM0_API_KEY
+    user_id="alice@example.com",         # one of user_id / agent_id / application_id is required
+    context_prompt="## Memories\nConsider these when answering:",
+)
+
+agent = Agent(
+    client=OpenAIChatClient(),
+    instructions="You are a helpful assistant.",
+    context_providers=[
+        FileHistoryProvider(storage_path="./sessions"),     # short-term
+        memory,                                              # long-term semantic recall
+    ],
+)
+
+async with memory:                                           # opens the underlying Mem0 client
+    session = agent.create_session(session_id="alice-2026")
+    await agent.run("I'm planning a trip — remember I always want vegetarian options.", session=session)
+    await agent.run("Suggest a weekend in Lisbon.", session=session)
+    # The second run sees the vegetarian preference even if it's not in the recent chat history.
+```
+
+`Mem0ContextProvider` accepts either an `AsyncMemoryClient` (cloud Mem0 platform) or `AsyncMemory` (open-source Mem0 instance). Pass `mem0_client=` when you've already constructed one in your app — the provider will not close a client it didn't create.
+
+Filtering is enforced at construction time: at least one of `user_id`, `agent_id`, or `application_id` must be set, otherwise `_validate_filters` raises before the first search hits Mem0. Use `application_id` for tenant scoping, `user_id` for per-end-user memory, and `agent_id` when multiple agents share the same user.
+
+## Local interactive testing — DevUI
+
+`agent-framework-devui` (re-exported as `agent_framework.devui`) is a built-in FastAPI/Uvicorn dev server that exposes any list of agents or workflows over an OpenAI-compatible HTTP API plus an interactive web UI. Useful for poking at an agent without writing your own front-end.
+
+```python
+from agent_framework import Agent
+from agent_framework.devui import serve
+from agent_framework.openai import OpenAIChatClient
+
+
+writer = Agent(
+    client=OpenAIChatClient(),
+    name="writer",
+    instructions="You write concise marketing copy.",
+)
+
+
+# Blocks the current process — uvicorn under the hood.
+serve(
+    entities=[writer, my_workflow],            # mix agents and workflows
+    host="127.0.0.1",
+    port=8080,
+    auto_open=True,                            # pop the browser
+    instrumentation_enabled=True,              # wire OpenTelemetry traces in the UI
+)
+```
+
+Three knobs that matter when deploying beyond localhost:
+
+- `mode="developer"` (default) returns full error tracebacks and exposes admin APIs. Use `mode="user"` for shareable demos — it returns generic errors and locks down the management endpoints.
+- `auth_enabled=True` requires a Bearer token on every request. Without `auth_token=`, the server auto-generates one and prints it on startup; in CI / production, set `DEVUI_AUTH_TOKEN` in the environment so it's stable across restarts.
+- Network-exposing the server (`host="0.0.0.0"`) without `auth_enabled=True` triggers a startup warning — DevUI is not a hardened production runtime, it's a developer harness.
+
+For directory-based discovery (one folder per agent), point at the directory instead of passing instances:
+
+```python
+serve(entities_dir="./agents", port=8080)
+```
+
+The dev server is also runnable from the CLI: `devui ./agents --port 8080 --auth`.
 
 ## Production patterns
 

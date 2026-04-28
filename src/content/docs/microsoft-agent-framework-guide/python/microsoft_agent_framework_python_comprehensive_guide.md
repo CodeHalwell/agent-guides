@@ -747,6 +747,87 @@ viz.save_svg("workflow.svg")       # needs `pip install graphviz>=0.20.0` + the 
 
 Pass `include_internal_executors=True` when you're debugging routing — the diagram then includes the framework's auto-injected glue nodes.
 
+### Nesting a workflow inside another with `WorkflowExecutor`
+
+A built workflow is just an `Executor` with extra type metadata — wrap it in a `WorkflowExecutor` and it becomes a single node inside a larger workflow. Useful for building reusable building blocks: a "draft → review → approve" sub-pipeline that you can drop into multiple parents.
+
+```python
+from agent_framework import (
+    Agent,
+    AgentExecutor,
+    WorkflowBuilder,
+    WorkflowExecutor,
+)
+from agent_framework.openai import OpenAIChatClient
+
+
+client = OpenAIChatClient()
+
+# Inner workflow: draft + critique
+drafter = AgentExecutor(Agent(client=client, name="drafter"))
+critic = AgentExecutor(Agent(client=client, name="critic"))
+inner = (
+    WorkflowBuilder(start_executor=drafter, name="draft-and-critique")
+    .add_edge(drafter, critic)
+    .build()
+)
+
+# Outer workflow: the inner pipeline becomes a single node, followed by a publisher.
+publisher = AgentExecutor(Agent(client=client, name="publisher"))
+outer = (
+    WorkflowBuilder(
+        start_executor=WorkflowExecutor(inner, id="draft-pipeline"),
+        name="publish-pipeline",
+    )
+    .add_edge(WorkflowExecutor(inner, id="draft-pipeline"), publisher)
+    .build()
+)
+```
+
+Two flags shape how the inner workflow's outputs reach the parent:
+
+- `allow_direct_output=False` (default) — outputs from the inner workflow are forwarded to the next executor as messages. Use this when the next executor in the parent wants to react to the sub-pipeline's result.
+- `allow_direct_output=True` — outputs are yielded directly into the parent workflow's event stream. Use this when the inner workflow's output **is** the outer workflow's output and you don't have a downstream executor.
+
+Sub-workflow request_info events propagate by default as `SubWorkflowRequestMessage` so a parent executor can intercept and respond locally; set `propagate_request=True` if you want the original `WorkflowEvent` to bubble out to the outer caller (useful when the same human handles both inner and outer HITL gates).
+
+`WorkflowViz` walks the composition tree automatically — a multi-level nest renders as Mermaid clusters that mirror the call hierarchy.
+
+### Workflow event types — what comes out of `workflow.run(stream=True)`
+
+`workflow.run(message, stream=True)` yields `WorkflowEvent` objects. The `type` discriminator tells you what kind of event it is; lifecycle, executor, and orchestration events all flow through the same stream:
+
+| `event.type` | Useful fields | Emitted by |
+|---|---|---|
+| `started` | — | Once per run, when the workflow begins |
+| `status` | `event.state` (`STARTED`, `IN_PROGRESS`, `IDLE`, `IDLE_WITH_PENDING_REQUESTS`, `FAILED`, `CANCELLED`) | Lifecycle transitions |
+| `output` | `event.executor_id`, `event.data` | Executor called `ctx.yield_output(...)` |
+| `data` | `event.executor_id`, `event.data` (typed payload, e.g. `AgentResponse`) | Executor emitted typed data (e.g. an `AgentExecutor` finishing) |
+| `request_info` | `event.request_id`, `event.source_executor_id`, `event.data` | Executor called `ctx.request_info(...)` — caller must reply |
+| `superstep_started` / `superstep_completed` | `event.iteration` | Pregel-style superstep boundaries |
+| `executor_invoked` / `executor_completed` / `executor_failed` | `event.executor_id`, `event.details` (on failure) | Per-executor lifecycle |
+| `executor_bypassed` | `event.executor_id` | Replay hit a cached result |
+| `warning` / `error` | `event.data` (str/Exception) | Diagnostic — non-fatal |
+| `failed` | `event.details` (`WorkflowErrorDetails`) | Workflow terminated with an unrecoverable error |
+| `group_chat` / `handoff_sent` / `magentic_orchestrator` | `event.data` (typed orchestrator payload) | Specific orchestration patterns |
+
+A typical consumer pattern:
+
+```python
+async for event in workflow.run(message, stream=True):
+    if event.type == "output":
+        print(f"[{event.executor_id}] {event.data}")
+    elif event.type == "request_info":
+        # Pause for human input — see the HITL section above.
+        responses[event.request_id] = await ask_human(event.data)
+    elif event.type == "executor_failed":
+        print(f"FAIL {event.executor_id}: {event.details.error_type}: {event.details.message}")
+    elif event.type == "status" and event.state == "IDLE":
+        break
+```
+
+The factory methods (`WorkflowEvent.output(...)`, `WorkflowEvent.status(...)`, etc.) are what executors and the runtime use internally — you almost never construct events yourself, but the discriminator pattern means a single `for event in result:` loop handles every signal the framework can produce.
+
 ### Workflow checkpointing
 
 Pass a `CheckpointStorage` to the builder and every superstep saves automatically:
