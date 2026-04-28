@@ -653,6 +653,7 @@ If you don't pass `selection_func_name=` the framework tries to derive it from t
 A real-world example: shard a stream of orders by region, with a fallback for unknown regions:
 
 ```python
+from typing import Any
 from agent_framework import (
     Executor,
     FanOutEdgeGroup,
@@ -661,7 +662,7 @@ from agent_framework import (
 )
 
 
-def shard_by_region(order: dict, available: list[str]) -> list[str]:
+def shard_by_region(order: dict[str, Any], available: list[str]) -> list[str]:
     region = (order.get("region") or "").lower()
     if region == "eu":
         return ["worker_eu"]

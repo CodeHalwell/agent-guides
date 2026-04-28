@@ -29,6 +29,7 @@ A `BaseAgent` subclass only has to implement `run(...)`. The base class gives yo
 
 ```python
 from collections.abc import AsyncIterator
+from typing import Any
 from agent_framework import (
     AgentResponse,
     AgentResponseUpdate,
@@ -57,7 +58,7 @@ class WorkflowBackedAgent(BaseAgent):
         *,
         stream: bool = False,
         session: AgentSession | None = None,
-        **_: object,
+        **kwargs: Any,
     ) -> AgentResponse | ResponseStream[AgentResponseUpdate, AgentResponse]:
         text = messages if isinstance(messages, str) else (messages[-1].text if messages else "")
 

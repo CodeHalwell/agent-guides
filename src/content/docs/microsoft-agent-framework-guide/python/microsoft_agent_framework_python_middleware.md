@@ -308,6 +308,7 @@ Because chat middleware wraps the actual model invocation (every iteration of th
 import hashlib
 import json
 import time
+from typing import Any
 from agent_framework import ChatContext, ChatMiddleware, ChatResponse, Message
 
 
@@ -324,7 +325,7 @@ class MemoryChatCache(ChatMiddleware):
         self._store: dict[str, tuple[float, ChatResponse]] = {}
 
     @staticmethod
-    def _key(messages: list[Message], options: dict) -> str:
+    def _key(messages: list[Message], options: dict[str, Any]) -> str:
         blob = json.dumps(
             {
                 "m": [(m.role, m.text or "") for m in messages],
