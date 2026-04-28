@@ -152,10 +152,12 @@ from agent_framework import TokenizerProtocol
 
 
 class TiktokenTokenizer:
+    """Implements the `TokenizerProtocol` — a single `count_tokens(text)` method."""
+
     def __init__(self, model: str = "gpt-4o-mini") -> None:
         self._enc = tiktoken.encoding_for_model(model)
 
-    def count(self, text: str) -> int:
+    def count_tokens(self, text: str) -> int:
         return len(self._enc.encode(text))
 
 
@@ -166,7 +168,18 @@ strategy = TokenBudgetComposedStrategy(
 )
 ```
 
-`CharacterEstimatorTokenizer` ships with the framework for when you just need a rough character→token heuristic (~4 chars/token). Use the real tokenizer in production.
+`CharacterEstimatorTokenizer` ships with the framework for when you just need a rough character→token heuristic. The implementation is intentionally trivial — `max(1, len(text) // 4)` — so it never returns 0 for non-empty text and avoids dragging in a real tokenizer dependency:
+
+```python
+from agent_framework import CharacterEstimatorTokenizer
+
+est = CharacterEstimatorTokenizer()
+est.count_tokens("hello")           # 1   (5 // 4 → 1)
+est.count_tokens("")                # 1   (clamped — never 0)
+est.count_tokens("a" * 4_000)       # 1000
+```
+
+It's good enough for budget-aware fallbacks during dev/test. For production cost accounting use the real tokenizer that matches your model. Any object with a `count_tokens(text: str) -> int` method satisfies `TokenizerProtocol` — the protocol is structurally typed (`runtime_checkable`), so no inheritance is required.
 
 ## Wiring compaction into an agent
 
@@ -205,6 +218,52 @@ await agent.run("Now write the summary.", session=session)   # session history c
 ```
 
 `before_strategy` runs when messages are loaded into the run; `after_strategy` compacts what's persisted back into session state so the *next* turn starts smaller. Either can be `None` to skip that phase.
+
+#### The two-phase lifecycle in detail
+
+Knowing exactly *when* each strategy fires lets you reason about token cost and history retention separately:
+
+```text
+agent.run(...)
+   │
+   ├─ HistoryProvider.load_session(...) loads stored messages into context
+   ├─ CompactionProvider.before_run(...)   ← before_strategy mutates loaded context
+   ├─ ──── model call(s) + tool loop ────  ← uses the (now-compacted) context
+   ├─ HistoryProvider.persist(...) writes new messages into session.state
+   ├─ CompactionProvider.after_run(...)    ← after_strategy mutates stored history
+   │       (looked up by `history_source_id` in session.state)
+   └─ return AgentResponse
+```
+
+Two practical consequences:
+
+- **Same strategy, different goals.** A common pattern is "summarise once it gets big" — a `SummarizationStrategy` as `after_strategy` keeps storage compact, while a cheap `SlidingWindowStrategy` as `before_strategy` is a safety net in case the next turn still loads more than expected.
+- **`history_source_id` must match the history provider.** The `after_strategy` looks up history under `session.state[history_source_id]`. If you change the history provider's `source_id` (say, you mount two providers as `"long_term"` and `"short_term"`) you must thread the matching id into `CompactionProvider(history_source_id=...)` or compaction silently no-ops on persist.
+
+#### Inspecting compaction in tests
+
+`apply_compaction` is the entry point you call directly — it's an async coroutine, so wrap it in `asyncio.run` (or `await` it from an async test). Handy in unit tests so you can assert on inclusion without spinning up an agent:
+
+```python
+import asyncio
+from agent_framework import (
+    Message,
+    SlidingWindowStrategy,
+    apply_compaction,
+    included_messages,
+)
+
+messages = [
+    Message(role="system", contents=["Be concise."]),
+    *(Message(role="user", contents=[f"q{i}"]) for i in range(10)),
+]
+
+asyncio.run(apply_compaction(messages, strategy=SlidingWindowStrategy(keep_last_groups=3)))
+
+assert [m.role for m in included_messages(messages)] == ["system", "user", "user", "user"]
+```
+
+Excluded messages remain in the original list with `EXCLUDED_KEY=True` annotations — `apply_compaction` mutates the list in place rather than returning a copy.
 
 ### Swapping in `FileHistoryProvider`
 

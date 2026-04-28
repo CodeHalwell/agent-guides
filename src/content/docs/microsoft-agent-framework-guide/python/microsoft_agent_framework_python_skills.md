@@ -109,6 +109,50 @@ def summary(values: list[float]) -> dict[str, float]:
 
 Script arguments are inferred from the signature and advertised to the model as JSON schema — the model sends args as a JSON object (`{"values": [1, 2, 3]}`) and the framework routes them to your function.
 
+### Constructing `SkillScript` directly
+
+Most of the time you'll add scripts via `@skill.script` (code-defined) or auto-discovery (file-based). Construct `SkillScript` directly when you're building a skill from runtime configuration — for instance a registry that maps skill ids to inline functions or to scripts living on disk:
+
+```python
+from agent_framework import Skill, SkillScript
+
+
+def echo(value: str) -> str:
+    """Return the value unchanged."""
+    return value
+
+
+# Code-defined: pass `function=`. The script runs in-process.
+inline = SkillScript(name="echo", function=echo, description="Return the value unchanged.")
+schema = inline.parameters_schema
+# JSON Schema with Pydantic-generated `title` fields, e.g.:
+# {"type": "object", "properties": {"value": {"type": "string", "title": "Value"}},
+#  "required": ["value"], "title": "<lambda>_input"}
+assert schema["type"] == "object"
+assert "value" in schema["properties"]
+assert schema["required"] == ["value"]
+
+# File-based: pass `path=` (relative to the skill directory). Needs a SkillScriptRunner.
+on_disk = SkillScript(name="validate.py", path="scripts/validate.py", description="Run validator.")
+assert on_disk.function is None
+assert on_disk.parameters_schema is None     # only code-defined scripts have a schema
+
+skill = Skill(
+    name="ops",
+    description="Operations utilities.",
+    content="Use `run_skill_script('ops', 'echo', {'value': '...'})` for echo.",
+    scripts=[inline, on_disk],
+)
+```
+
+A few constraints surfaced by `SkillScript.__init__` (each raises `ValueError` so configuration bugs surface at registration, not at runtime):
+
+- `name` is required and non-empty.
+- **Exactly one** of `function` or `path` must be supplied — passing both, or neither, raises.
+- Adding `**kwargs` to a code-defined script's signature toggles a `_accepts_kwargs` fast-path: the framework forwards arbitrary arguments without validating them against the schema. Useful when the model passes auxiliary metadata you want to log but not type-check.
+
+The lazy `parameters_schema` property reuses `FunctionTool.parameters()` — so the schema you see is identical to what you'd get from `@tool` on the same callable, which means client-side validators that already understand tool schemas accept skill scripts unchanged.
+
 ## File-based skills
 
 Store skills on disk and discover them with `skill_paths=`:
