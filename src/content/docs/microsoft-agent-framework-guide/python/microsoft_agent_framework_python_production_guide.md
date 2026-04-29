@@ -351,3 +351,171 @@ agent = Agent(client=client, instructions="...")
 ```
 
 All three clients implement the same `SupportsChatGetResponse` protocol, so you can swap them without touching agent / tool / middleware code.
+
+---
+
+## 10. Operational patterns specific to `agent_framework`
+
+### Reuse one `Agent` per process
+
+`Agent` is cheap to call but moderately expensive to construct (chat client, middleware pipelines, context provider registration). Build one at startup and pass it through dependency injection:
+
+```python
+# app.py
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends
+from agent_framework import Agent, FileCheckpointStorage, InMemoryHistoryProvider
+from agent_framework.foundry import FoundryChatClient
+
+
+_agent: Agent | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _agent
+    _agent = Agent(
+        client=FoundryChatClient(),
+        instructions="You are the customer-support agent.",
+        context_providers=[InMemoryHistoryProvider()],
+    )
+    yield
+    # Nothing to dispose — the chat client cleans up its httpx pools on GC.
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+def get_agent() -> Agent:
+    assert _agent is not None
+    return _agent
+
+
+@app.post("/chat")
+async def chat(message: str, agent: Agent = Depends(get_agent)):
+    return await agent.run(message)
+```
+
+Per-request state (conversation history, user context) lives in the `AgentSession`, not the agent — create a session per user/conversation and pass `session=` on each `agent.run(...)`.
+
+### Per-tenant scoping
+
+For SaaS deployments, scope per-tenant data via `additional_properties` on the run call rather than per-tenant agent instances:
+
+```python
+await agent.run(
+    user_message,
+    session=session,
+    additional_properties={"tenant_id": tenant_id, "gen_ai.conversation.id": correlation_id},
+    function_invocation_kwargs={"tenant_id": tenant_id},   # forwarded to tools that opt in via **kwargs
+)
+```
+
+Tools and context providers that declare `**kwargs` see the runtime data; `additional_properties` propagate to telemetry spans for trace correlation. One agent instance, N tenants — no extra memory footprint.
+
+### Graceful timeouts on workflows
+
+`Workflow.run(...)` doesn't enforce a wall-clock deadline. Wrap it in `asyncio.wait_for` so a stuck tool or runaway Magentic loop doesn't tie up your worker pool:
+
+```python
+import asyncio
+
+async def safe_run(workflow, user_input: str, timeout_s: float = 60.0):
+    try:
+        return await asyncio.wait_for(workflow.run(user_input), timeout=timeout_s)
+    except asyncio.TimeoutError:
+        # Save the latest checkpoint so a human can resume manually.
+        latest = await storage.get_latest(workflow_name=workflow.name)
+        log.warning("workflow_timeout", checkpoint_id=latest and latest.checkpoint_id)
+        raise
+```
+
+Combine with `MagenticBuilder(max_round_count=20, max_stall_count=3)` so the orchestrator gives up internally before you ever hit the outer timeout.
+
+### Concurrency limits
+
+Front-line `OpenAIChatClient` / `FoundryChatClient` traffic is rate-limited by your model deployment. Add a semaphore at the agent boundary so a flood of requests doesn't all hit the model at once:
+
+```python
+import asyncio
+from agent_framework import AgentMiddleware, AgentContext
+
+
+class ConcurrencyLimit(AgentMiddleware):
+    def __init__(self, max_concurrent: int) -> None:
+        self._sem = asyncio.Semaphore(max_concurrent)
+
+    async def process(self, context: AgentContext, call_next) -> None:
+        async with self._sem:
+            await call_next()
+
+
+agent = Agent(
+    client=FoundryChatClient(),
+    instructions="…",
+    middleware=[ConcurrencyLimit(max_concurrent=8)],
+)
+```
+
+For workflow-level limits put the semaphore in your handler instead of around `agent.run` — workflow supersteps execute concurrently, so you want one semaphore per executor type.
+
+### Health checks that don't burn tokens
+
+A liveness probe that calls `agent.run("ping")` costs real money. Probe a cheap dependency instead:
+
+```python
+@app.get("/healthz")
+async def healthz(agent: Agent = Depends(get_agent)):
+    # Verify the chat client is reachable without invoking the model.
+    return {"status": "ok", "agent": agent.name, "version": agent.id}
+```
+
+If you must verify model connectivity, do it once on startup (not per-probe) by issuing a tiny structured call — and cache the result for the next 60 seconds.
+
+### Checkpoint hygiene
+
+`FileCheckpointStorage` and Cosmos / Redis backends accumulate over time. Add a scheduled task that prunes old checkpoints per workflow:
+
+```python
+async def prune_checkpoints(storage, *, workflow_name: str, keep: int = 50) -> int:
+    ids = await storage.list_checkpoint_ids(workflow_name=workflow_name)
+    deleted = 0
+    for old in ids[:-keep]:
+        if await storage.delete(old):
+            deleted += 1
+    return deleted
+```
+
+Run it nightly per workflow name. Aim for `keep` ≥ longest plausible HITL pause (don't auto-delete checkpoints with `pending_request_info_events`).
+
+### Circuit breaker for upstream model outages
+
+When the model API is degraded, fail fast rather than waiting for every request to time out:
+
+```python
+from agent_framework import ChatMiddleware, ChatContext, MiddlewareTermination
+
+
+class ModelCircuitBreaker(ChatMiddleware):
+    def __init__(self, *, fail_threshold: int = 5, recover_seconds: float = 30.0) -> None:
+        self._fail_count = 0
+        self._open_until: float = 0.0
+        self._fail_threshold = fail_threshold
+        self._recover_seconds = recover_seconds
+
+    async def process(self, context: ChatContext, call_next) -> None:
+        import time
+        if time.time() < self._open_until:
+            raise MiddlewareTermination("model unavailable — circuit open")
+
+        try:
+            await call_next()
+            self._fail_count = 0
+        except Exception:
+            self._fail_count += 1
+            if self._fail_count >= self._fail_threshold:
+                self._open_until = time.time() + self._recover_seconds
+            raise
+```
+
+Pair with a retry middleware that catches `MiddlewareTermination("model unavailable...")` and routes to a fallback agent (or a static answer). Two layers, single circuit-breaker source of truth.

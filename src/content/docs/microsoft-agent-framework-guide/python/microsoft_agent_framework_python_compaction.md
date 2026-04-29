@@ -419,3 +419,154 @@ Excluded messages stay in the list tagged with `EXCLUDED_KEY=True` and `EXCLUDE_
 **Multi-tool pipelines.** Tool results often dwarf user/assistant turns. `SelectiveToolCallCompactionStrategy(keep_last_tool_call_groups=2)` preserves the important reasoning while dropping the polling noise.
 
 **A/B test strategies.** Run `evaluate_agent` (see [Evaluation](./microsoft_agent_framework_python_evaluation/)) twice with different `compaction_strategy=` overrides and compare pass rates.
+
+## End-to-end recipes for each strategy
+
+The full constructor signatures are short — every example below is a complete, runnable strategy you can drop into a `CompactionProvider`.
+
+### `SummarizationStrategy` — long research conversations
+
+When earlier context still matters but you don't want to ship every turn, summarise the older portion with a cheap model and keep the newest turns intact:
+
+```python
+from agent_framework import (
+    Agent,
+    CompactionProvider,
+    InMemoryHistoryProvider,
+    SummarizationStrategy,
+)
+from agent_framework.openai import OpenAIChatClient
+
+# Use the cheapest summariser you trust — it runs every time the threshold trips.
+summary_client = OpenAIChatClient(model="gpt-4o-mini")
+
+summariser = SummarizationStrategy(
+    client=summary_client,
+    target_count=6,        # keep ~6 most-recent non-system messages verbatim
+    threshold=4,           # trigger once we exceed target_count + threshold = 10
+    prompt=(
+        "Summarise the conversation so far. Preserve: stated goals, open questions, "
+        "decisions already made, and unresolved blockers. Drop chit-chat and pleasantries. "
+        "Keep the summary under 200 words."
+    ),
+)
+
+history = InMemoryHistoryProvider()
+agent = Agent(
+    client=OpenAIChatClient(model="gpt-5"),
+    instructions="You are a research assistant for a multi-week project.",
+    context_providers=[
+        history,
+        CompactionProvider(after_strategy=summariser, history_source_id=history.source_id),
+    ],
+)
+```
+
+`SummarizationStrategy` writes back-pointers (`SUMMARY_OF_MESSAGE_IDS_KEY`, `SUMMARY_OF_GROUP_IDS_KEY`) on the new summary message and `SUMMARIZED_BY_SUMMARY_ID_KEY` on each replaced message — so debugging tools can show "this summary covered turns 2–14".
+
+If the summariser call fails, the strategy logs a warning and returns `False` — your conversation continues uncompacted rather than dying. Pair with a `SlidingWindowStrategy` as a safety net for the next turn.
+
+### `TokenBudgetComposedStrategy` — guarantee a context ceiling
+
+Run cheaper strategies first; fall through to summarisation only when needed; have a deterministic fallback that excludes oldest groups when even the LLM summariser couldn't squeeze under budget:
+
+```python
+import tiktoken
+from agent_framework import (
+    SlidingWindowStrategy,
+    SummarizationStrategy,
+    TokenBudgetComposedStrategy,
+    TokenizerProtocol,
+    ToolResultCompactionStrategy,
+)
+
+
+class TiktokenTokenizer:
+    def __init__(self, model: str = "gpt-4o-mini") -> None:
+        self._enc = tiktoken.encoding_for_model(model)
+
+    def count_tokens(self, text: str) -> int:
+        return len(self._enc.encode(text))
+
+
+budget_strategy = TokenBudgetComposedStrategy(
+    token_budget=24_000,                 # never ship more than 24k tokens
+    tokenizer=TiktokenTokenizer(),
+    early_stop=True,                     # stop as soon as we're under budget
+    strategies=[
+        # 1. Cheapest first — drop tool-call chatter.
+        ToolResultCompactionStrategy(keep_last_tool_call_groups=2),
+        # 2. Then trim middle of the conversation.
+        SlidingWindowStrategy(keep_last_groups=30),
+        # 3. Last resort — summarise older content with a cheap model.
+        SummarizationStrategy(client=summary_client, target_count=12, threshold=4),
+    ],
+)
+```
+
+The composed strategy applies each step in order, refreshes token counts, and stops when `early_stop=True` and the budget is met. If after running every step the count is still over, it deterministically excludes the oldest non-system groups one at a time — no run ever sends more than `token_budget`. System anchors are dropped only as a last resort.
+
+### `SelectiveToolCallCompactionStrategy` — tool-heavy agents
+
+Polling-style tools (status checks, retries) bloat history fast. Keep just the most recent tool-call group:
+
+```python
+from agent_framework import SelectiveToolCallCompactionStrategy
+
+trim_tools = SelectiveToolCallCompactionStrategy(keep_last_tool_call_groups=1)
+```
+
+`keep_last_tool_call_groups=0` drops every tool-call group — useful when the assistant has summarised the result into prose and the raw call/response is no longer load-bearing.
+
+### Mixing strategies — `before_strategy` ≠ `after_strategy`
+
+The two phases run on different message lists with different goals. A common production layout:
+
+```python
+provider = CompactionProvider(
+    # Read-time safety net — keeps the live request affordable even if persisted history grew.
+    before_strategy=SlidingWindowStrategy(keep_last_groups=40),
+    # Persist-time pruning — what gets stored for the next turn.
+    after_strategy=TokenBudgetComposedStrategy(
+        token_budget=8_000,
+        tokenizer=tokenizer,
+        strategies=[
+            ToolResultCompactionStrategy(keep_last_tool_call_groups=1),
+            SummarizationStrategy(client=summary_client, target_count=8),
+        ],
+    ),
+    history_source_id=history.source_id,
+)
+```
+
+Read-side window is generous; persisted-side budget is tight. The next turn loads at most 8k tokens, then `before_strategy` prevents accidentally re-loading more if a different provider also wrote into context.
+
+## Inspecting state with the framework constants
+
+The annotation keys are exported as constants — use them when you need to inspect compaction decisions in middleware or debug tooling without re-typing the underlying string:
+
+```python
+from agent_framework import (
+    EXCLUDED_KEY,
+    EXCLUDE_REASON_KEY,
+    GROUP_ANNOTATION_KEY,
+    GROUP_KIND_KEY,
+    SUMMARIZED_BY_SUMMARY_ID_KEY,
+)
+
+
+def explain_compaction(messages):
+    for m in messages:
+        excluded = m.additional_properties.get(EXCLUDED_KEY, False)
+        reason = m.additional_properties.get(EXCLUDE_REASON_KEY, "")
+        group = m.additional_properties.get(GROUP_ANNOTATION_KEY) or {}
+        kind = group.get(GROUP_KIND_KEY, "?")
+        replaced_by = m.additional_properties.get(SUMMARIZED_BY_SUMMARY_ID_KEY, "")
+        flag = "✗" if excluded else "✓"
+        suffix = f" → {reason}" if reason else ""
+        if replaced_by:
+            suffix += f" (summarised as {replaced_by})"
+        print(f"{flag} [{kind:14}] {(m.text or '')[:80]}{suffix}")
+```
+
+Wire this into a debug `AgentMiddleware` that runs after compaction to see exactly what the model received vs. what was kept on disk.

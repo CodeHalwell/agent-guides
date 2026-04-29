@@ -145,6 +145,176 @@ with tracer.start_as_current_span("process_order", attributes={"order.id": order
 
 For agent-level wrapping use `AgentMiddleware` instead — see the [middleware page](./microsoft_agent_framework_python_middleware/#emitting-opentelemetry-spans).
 
+### Use the framework's tracer / meter helpers
+
+`agent_framework.observability.get_tracer()` and `get_meter()` return providers that share the same configuration the framework uses internally. Calling them ensures your custom spans land alongside `invoke_agent` / `chat` / `execute_tool` and inherit the same resource attributes (service name, version):
+
+```python
+from agent_framework.observability import get_tracer, get_meter
+
+tracer = get_tracer("myapp.pricing")
+meter = get_meter("myapp.pricing")
+
+cache_hits = meter.create_counter(
+    "myapp.pricing.cache_hits",
+    description="Pricing cache hit count",
+    unit="{request}",
+)
+
+with tracer.start_as_current_span("price_quote", attributes={"sku": sku}):
+    if cached := cache.get(sku):
+        cache_hits.add(1, {"sku.tier": cached.tier})
+        return cached
+    return await agent.run(f"Price quote for {sku}")
+```
+
+## Reading framework attributes with `OtelAttr`
+
+`OtelAttr` is the single source of truth for every span attribute the framework emits. Use it to filter, sample, or post-process spans without typing string keys:
+
+```python
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export import SpanProcessor
+from agent_framework.observability import OtelAttr
+
+
+class TokenSpendProcessor(SpanProcessor):
+    """Side-car processor that counts model spend per agent."""
+
+    def __init__(self) -> None:
+        self.totals: dict[str, int] = {}
+
+    def on_end(self, span: ReadableSpan) -> None:
+        if span.name != OtelAttr.CHAT_COMPLETION_OPERATION.value:
+            return
+        attrs = dict(span.attributes or {})
+        agent = attrs.get(OtelAttr.AGENT_NAME.value, "unknown")
+        in_tok = attrs.get(OtelAttr.INPUT_TOKENS.value, 0)
+        out_tok = attrs.get(OtelAttr.OUTPUT_TOKENS.value, 0)
+        self.totals[agent] = self.totals.get(agent, 0) + in_tok + out_tok
+
+    def shutdown(self) -> None: ...
+    def force_flush(self, timeout_millis: int = 30_000) -> bool: return True
+
+
+# Register alongside the framework's exporters.
+from opentelemetry import trace
+trace.get_tracer_provider().add_span_processor(TokenSpendProcessor())
+```
+
+Common attribute keys you'll reach for (full list in `OtelAttr`):
+
+| Use case | Attribute |
+|---|---|
+| Filter to one agent | `OtelAttr.AGENT_NAME` |
+| Group by model | `OtelAttr.RESPONSE_MODEL`, `OtelAttr.REQUEST_MODEL` |
+| Track conversation | `OtelAttr.CONVERSATION_ID` |
+| Slice tool usage | `OtelAttr.TOOL_NAME`, `OtelAttr.TOOL_TYPE` |
+| Workflow drilldown | `OtelAttr.WORKFLOW_NAME`, `OtelAttr.EXECUTOR_ID`, `OtelAttr.EDGE_GROUP_TYPE` |
+
+## Sampling — keep traces affordable
+
+OTel samplers run before exporters; pair them with `configure_otel_providers(...)` so the framework spans inherit your sampler:
+
+```python
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.sampling import (
+    ALWAYS_ON,
+    ParentBased,
+    TraceIdRatioBased,
+)
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from agent_framework.observability import enable_instrumentation
+
+# 5% head-based sampling for high-volume production; always trace if upstream did.
+sampler = ParentBased(root=TraceIdRatioBased(0.05))
+provider = TracerProvider(sampler=sampler)
+provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+trace.set_tracer_provider(provider)
+
+enable_instrumentation()        # do NOT call configure_otel_providers — your provider wins
+```
+
+For tail-based sampling (keep every trace that errored or exceeded a latency budget), use the OTel Collector's `tail_sampling` processor — agent-framework spans expose `error.type` and the duration histograms as standard inputs.
+
+## Filtering noisy spans
+
+A custom `SpanProcessor` can drop spans the exporter never sees — useful when you want to capture model calls but not every internal `edge_group.process`:
+
+```python
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export import SpanExportResult
+from agent_framework.observability import OtelAttr
+
+
+class DropInternalEdgeSpans:
+    """Wrap any exporter to drop edge-group spans below a configurable threshold."""
+
+    def __init__(self, inner, *, min_duration_ms: float = 50.0) -> None:
+        self._inner = inner
+        self._min_ns = min_duration_ms * 1_000_000
+
+    def export(self, spans):
+        keep = [
+            s for s in spans
+            if s.name != OtelAttr.EDGE_GROUP_PROCESS_SPAN.value
+            or (s.end_time - s.start_time) > self._min_ns
+        ]
+        return self._inner.export(keep) if keep else SpanExportResult.SUCCESS
+
+    def shutdown(self):
+        self._inner.shutdown()
+```
+
+Wrap your real exporter in `BatchSpanProcessor(DropInternalEdgeSpans(real_exporter))`.
+
+## Capping metric cardinality
+
+`create_metric_views()` returns the framework's default views. Append your own to drop attributes you don't query on — high-cardinality dimensions (per-user IDs, request IDs) blow up storage costs:
+
+```python
+from opentelemetry.sdk.metrics.view import View
+from agent_framework.observability import (
+    configure_otel_providers,
+    create_metric_views,
+    OtelAttr,
+)
+
+views = create_metric_views() + [
+    # Aggregate token usage without conversation_id — keep model + agent dimensions only.
+    View(
+        instrument_name=OtelAttr.LLM_TOKEN_USAGE.value,
+        attribute_keys={
+            OtelAttr.RESPONSE_MODEL.value,
+            OtelAttr.AGENT_NAME.value,
+            OtelAttr.T_TYPE.value,
+        },
+    ),
+]
+
+configure_otel_providers(views=views)
+```
+
+## Stamping your own context onto every span
+
+Two ways to attach business attributes — pick the one that matches lifetime:
+
+1. **Per-`agent.run(...)` call** — pass `additional_properties={"gen_ai.conversation.id": req_id}` so the conversation correlator uses your upstream request ID.
+2. **Per-process resource attributes** — set `OTEL_RESOURCE_ATTRIBUTES=team=payments,env=prod,deployment.version=1.4.2` before launching your service. The framework attaches them to every span/metric/log automatically.
+
+```python
+import os
+os.environ["OTEL_RESOURCE_ATTRIBUTES"] = "team=payments,env=prod,deployment.version=1.4.2"
+os.environ["OTEL_SERVICE_NAME"] = "checkout-agent"
+
+from agent_framework.observability import configure_otel_providers
+configure_otel_providers()
+```
+
+For request-scoped attributes use a span processor that reads from a `contextvars.ContextVar` you set at the API boundary — that way every framework-emitted span inherits them without changing call sites.
+
 ## Correlating conversations
 
 The framework stamps `gen_ai.conversation.id` on every span in a single `agent.run(...)` call and across `session`-scoped runs. In your tracing UI, filter by that attribute to see the full conversation on one trace.
