@@ -175,6 +175,9 @@ workflow = (
         participants=[researcher, analyst, writer],
         manager_agent=manager_agent,
         enable_plan_review=True,        # pause after initial plan
+        max_stall_count=3,              # how many stalled rounds before HITL fires
+        max_round_count=20,             # absolute upper bound — fail fast on runaway
+        max_reset_count=2,              # cap how often the manager replans
     )
     .with_human_input_on_stall()        # intervene instead of auto-replanning
     .build()
@@ -187,6 +190,112 @@ These emit `MagenticHumanInterventionRequest` events with `kind=PLAN_REVIEW` or 
 - `REVISE` — pass a revised plan.
 - `REPLAN` — force the manager to replan.
 - `GUIDANCE` — attach free-text guidance for the manager.
+
+#### Driving plan review end-to-end
+
+The shape of the loop is identical to workflow-level `request_info` — the only difference is the typed reply object:
+
+```python
+from agent_framework_orchestrations import (
+    MagenticBuilder,
+    MagenticPlanReviewRequest,
+    MagenticPlanReviewResponse,
+)
+
+
+async def review_loop(workflow, task: str) -> str:
+    pending: dict[str, MagenticPlanReviewResponse] = {}
+    stream = workflow.run(task, stream=True)
+
+    while True:
+        async for event in stream:
+            if event.type == "request_info" and isinstance(event.data, MagenticPlanReviewRequest):
+                request: MagenticPlanReviewRequest = event.data
+                print("Plan:\n", request.plan_text)
+                choice = await ask_user(request)              # your UX
+
+                if choice == "approve":
+                    pending[event.request_id] = request.approve()
+                elif choice == "revise":
+                    feedback = await prompt_user("How should the plan change?")
+                    pending[event.request_id] = request.revise(feedback)
+                # If the user dithers, leave it pending — workflow stays paused.
+            elif event.type == "output":
+                return event.data
+
+        if not pending:
+            return ""
+        stream = workflow.run(responses=pending, stream=True)
+        pending = {}
+```
+
+`MagenticPlanReviewRequest.approve()` and `.revise(feedback)` return the matching reply — no need to construct one manually. `feedback` accepts a string, a list of strings, a `Message`, or a list of messages, so you can attach structured guidance (e.g. "Add: validate against EU regulations").
+
+#### Custom manager prompts
+
+The `StandardMagenticManager` accepts overrides for every prompt in the planning loop. Use them to nudge the manager toward your domain's vocabulary or to enforce a particular plan format:
+
+```python
+workflow = (
+    MagenticBuilder(
+        participants=[researcher, analyst, writer],
+        manager_agent=manager_agent,
+        task_ledger_facts_prompt=(
+            "Extract verifiable facts about the engineering problem only — ignore organisational context."
+        ),
+        task_ledger_plan_prompt=(
+            "Produce a numbered plan. Each step must name exactly one specialist and one expected artefact."
+        ),
+        progress_ledger_prompt=(
+            "For each step, mark COMPLETED, IN_PROGRESS, or BLOCKED. If any step is BLOCKED, name the unblocker."
+        ),
+        final_answer_prompt=(
+            "Synthesize the conversation into a one-page brief with sections: Decision, Rationale, Risks, Next steps."
+        ),
+        enable_plan_review=True,
+    )
+    .build()
+)
+```
+
+Useful when the default prompts produce plans that are too generic, too verbose, or don't match the artefacts your downstream tooling expects.
+
+#### Bring your own manager
+
+For deterministic planning, subclass `MagenticManagerBase` and pass `manager=`. This is the right escape hatch when the LLM-driven planner makes the same mistake every time and your domain has a clear policy:
+
+```python
+from agent_framework_orchestrations import MagenticManagerBase, MagenticContext
+
+
+class PolicyManager(MagenticManagerBase):
+    """Hard-coded plan: researcher first, analyst second, writer last."""
+
+    async def plan(self, context: MagenticContext) -> list[str]:
+        return [
+            "researcher: collect 5 reference papers",
+            "analyst: extract claims and evidence",
+            "writer: produce one-page brief",
+        ]
+
+    async def select_next_speaker(self, context: MagenticContext) -> str | None:
+        # Round-robin in plan order — no LLM needed.
+        for step in context.progress_ledger.steps:
+            if not step.completed:
+                return step.assignee
+        return None    # all steps complete
+
+    async def assess_progress(self, context: MagenticContext) -> bool:
+        return all(s.completed for s in context.progress_ledger.steps)
+
+
+workflow = MagenticBuilder(
+    participants=[researcher, analyst, writer],
+    manager=PolicyManager(),
+).build()
+```
+
+Because the manager is your code, it can also drive HITL — emit a `request_info` from inside `plan()` to require human sign-off on the policy itself.
 
 ## Tool approval
 

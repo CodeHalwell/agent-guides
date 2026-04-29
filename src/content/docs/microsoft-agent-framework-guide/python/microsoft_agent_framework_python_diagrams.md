@@ -202,3 +202,89 @@ viz.export(format="svg", filename="workflow-debug.svg", include_internal_executo
 
 `WorkflowExecutor` (a workflow nested inside another workflow as a node) renders as a separate cluster under the parent diagram. The viz walks the composition tree automatically, so a multi-level workflow round-trips into a Mermaid graph that mirrors the actual call hierarchy.
 
+### Visualizing the orchestration builders
+
+Every orchestration builder (`SequentialBuilder`, `ConcurrentBuilder`, `HandoffBuilder`, `GroupChatBuilder`, `MagenticBuilder`) returns the same `Workflow` object, so all five render the same way. The diagrams reveal the hidden glue executors each builder injects — useful for debugging "why is my message not arriving?":
+
+```python
+from agent_framework import WorkflowViz
+from agent_framework_orchestrations import (
+    ConcurrentBuilder,
+    HandoffBuilder,
+    SequentialBuilder,
+)
+
+# Sequential — A → B → C with implicit conversation marshalling
+sequential = SequentialBuilder(participants=[researcher, analyst, writer]).build()
+print(WorkflowViz(sequential).to_mermaid())
+
+# Concurrent — fan-out → participants → fan-in → aggregator
+concurrent = ConcurrentBuilder(participants=[researcher, analyst, writer]).build()
+print(WorkflowViz(concurrent).to_mermaid())
+
+# Handoff — mesh between specialists, dispatcher node owns the user
+handoff = (
+    HandoffBuilder(participants=[triage, billing, technical])
+    .add_handoff(triage, [billing, technical])
+    .with_start_agent(triage)
+    .build()
+)
+print(WorkflowViz(handoff).to_mermaid())
+```
+
+Toggle `include_internal_executors=True` on any of these to see the dispatcher / aggregator / collector nodes that the builders add — what the user wrote vs. what actually runs.
+
+### Generating a CI artifact
+
+Render diagrams during CI so PR reviewers can see how the topology changed without running anything:
+
+```python
+# scripts/render_workflow_diagrams.py
+from pathlib import Path
+import warnings
+from agent_framework import WorkflowViz
+from agent_framework._feature_stage import FeatureStageWarning
+
+from myapp.workflows import build_research_workflow, build_support_workflow
+
+# Suppress the once-per-process feature-stage warning so CI logs stay clean.
+warnings.filterwarnings("ignore", category=FeatureStageWarning)
+
+OUT = Path("docs/workflows")
+OUT.mkdir(parents=True, exist_ok=True)
+
+for name, factory in [("research", build_research_workflow), ("support", build_support_workflow)]:
+    wf = factory()
+    viz = WorkflowViz(wf)
+    (OUT / f"{name}.mmd").write_text(viz.to_mermaid())            # markdown-friendly
+    (OUT / f"{name}.dot").write_text(viz.to_digraph())            # for tooling
+    viz.save_svg(str(OUT / f"{name}.svg"))                          # if graphviz installed
+```
+
+Wire the script into your release pipeline; commit the `.mmd` files and let your docs site (Astro, Docusaurus, MkDocs) render them inline.
+
+### DOT vs Mermaid — when to pick which
+
+- **Mermaid** — paste into any Markdown renderer (GitHub, GitLab, Astro Starlight, MkDocs Material). No system dependencies; the renderer downloads the JS at view time. Good for docs.
+- **DOT / Graphviz** — needs the `dot` binary on PATH. Better when you want PDF output for design docs, hand-tuned layouts (`rankdir=LR`), or you need to feed the graph into other Graphviz-aware tools (e.g. `gvpr`).
+- **`include_internal_executors=True`** for either — turn on while debugging, off for the final docs.
+
+### Inspecting nodes and edges programmatically
+
+`WorkflowViz` is a thin wrapper over the workflow's edge groups. When you need to drive your own renderer (a custom React diagram, a topology validator), reach into the underlying `Workflow` instead:
+
+```python
+from agent_framework import FanInEdgeGroup, FanOutEdgeGroup, SwitchCaseEdgeGroup
+
+for group in workflow.edge_groups:
+    if isinstance(group, FanOutEdgeGroup):
+        print(f"fan-out from {group.source_id} → {group.target_ids}")
+    elif isinstance(group, FanInEdgeGroup):
+        print(f"fan-in {group.source_ids} → {group.target_id}")
+    elif isinstance(group, SwitchCaseEdgeGroup):
+        for case in group.cases:
+            print(f"{group.source_id} -[case]-> {case.target_id}")
+```
+
+Pair with `workflow.executors` (a dict keyed by executor id) to enrich each node with type info, descriptions, or input/output type annotations from `executor.input_types`.
+
