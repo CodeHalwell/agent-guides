@@ -60,12 +60,14 @@ class ResearchState:
 
 
 # Each entry is "module:qualname" — same shape pickle uses internally.
+# The check is an exact match (no subclass walk), so list every concrete
+# class you actually persist; allowing `enum:Enum` does NOT permit subclasses.
 storage = FileCheckpointStorage(
     "/var/lib/agents/checkpoints",
     allowed_checkpoint_types=[
         "my_app.models:ResearchState",
         "my_app.models:ResearchOutcome",
-        "enum:Enum",                         # if you store stdlib enum subclasses
+        "my_app.models:ResearchStatus",      # list each enum subclass you store
     ],
 )
 

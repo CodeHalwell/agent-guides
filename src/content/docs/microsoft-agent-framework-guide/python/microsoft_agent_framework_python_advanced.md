@@ -530,7 +530,7 @@ await agent.run("What's my plan?", session=session, user_id="user-7")
 await agent.run("Upgrade me.", session=session, user_id="user-7")  # cache hit
 ```
 
-Notes that the source comments emphasise:
+Note that the source comments emphasise:
 
 - `state` is a **provider-scoped** dict — distinct from `session.state` (cross-provider). Mutate it freely without coordinating with other providers.
 - `state` survives across `before_run` / `after_run` of the same session. The framework persists it through `session.to_dict()` if the values implement `SerializationProtocol`.
