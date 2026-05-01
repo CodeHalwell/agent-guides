@@ -404,7 +404,7 @@ async for update in agent.run("Plan tomorrow's release.", stream=True):
 `AgentResponseUpdate` is a `SerializationMixin` dataclass — round-trips through `to_dict()` / `from_dict()` and `to_json()` / `from_json()`. Useful for buffering chunks to a queue, replaying them in tests, or shipping them over a websocket without the framework on the receiving end:
 
 ```python
-import json
+from agent_framework import AgentResponseUpdate
 
 # Persist each chunk as it arrives
 chunks: list[str] = []
@@ -412,10 +412,7 @@ async for update in agent.run("Hello", stream=True):
     chunks.append(update.to_json())
 
 # Later — restore the exact same updates
-restored = [
-    type(update_class).from_json(line)
-    for update_class, line in zip([__import__("agent_framework").AgentResponseUpdate]*len(chunks), chunks)
-]
+restored = [AgentResponseUpdate.from_json(line) for line in chunks]
 ```
 
 For non-streaming consumers that received a chunked feed, rebuild a single `AgentResponse` from the buffer:
