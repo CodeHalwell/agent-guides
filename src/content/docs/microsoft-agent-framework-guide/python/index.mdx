@@ -27,7 +27,7 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
 </CardGrid>
 
 <Aside type="caution" title="Earlier drafts had fabricated APIs">
-  Pages under this guide previously documented `agent_framework.graphs.AgentGraph`, `agent_framework.a2a.A2AProtocolAdapter`, `AzureAIAgentClient`, `ChatAgent`, `ai_function`, and other names that **do not exist**. The real primary agent class in Python is `Agent`; the Azure chat client is `FoundryChatClient` from `agent_framework.foundry`. Pages were rewritten in April 2026 after introspecting `agent-framework-core==1.2.2`. See [Errata in the comprehensive guide](/microsoft-agent-framework-guide/python/microsoft_agent_framework_python_comprehensive_guide/) for the running list.
+  Pages under this guide previously documented `agent_framework.graphs.AgentGraph`, `agent_framework.a2a.A2AProtocolAdapter`, `AzureAIAgentClient`, `ChatAgent`, `ai_function`, and other names that **do not exist**. The real primary agent class in Python is `Agent`; the Azure chat client is `FoundryChatClient` from `agent_framework.foundry`. Pages were rewritten in April 2026 after introspecting `agent-framework-core==1.1.0` and re-verified in May 2026 against `1.2.2`. See [Errata in the comprehensive guide](/microsoft-agent-framework-guide/python/microsoft_agent_framework_python_comprehensive_guide/) for the running list.
 </Aside>
 
 <Aside type="tip" title="Where to start">
@@ -155,7 +155,7 @@ Ready for the full walk-through? **[Start with Core Fundamentals →](/microsoft
 |------|---------|---------|
 | 2026-05-01 | 1.0.4 | Bumped pinned core/provider versions to `agent-framework-core==1.2.2` and `1.0.0b260429` provider line. Expanded streaming, function-middleware, functional-workflow, and feature-stage code examples after re-introspecting the installed library. |
 | 2026-04-22 | 1.0.3 | Added dedicated pages: Tools, Skills, Checkpointing, Compaction, Observability & Telemetry, Evaluation. Zero→Hero reflow to 18 steps; Jump-to-topic grid and Reference card grid updated. |
-| 2026-04-22 | 1.0.2 | Added dedicated pages: Model Providers, Orchestration, Middleware, MCP, Human-in-the-loop. Verified against source of `agent-framework-core==1.2.2`; corrected `context_providers` plural-vs-singular errata. |
+| 2026-04-22 | 1.0.2 | Added dedicated pages: Model Providers, Orchestration, Middleware, MCP, Human-in-the-loop. Verified against source of `agent-framework-core==1.1.0`; corrected `context_providers` plural-vs-singular errata. |
 | 2026-04-21 | 1.0.1 | Index redesigned into Zero → Hero reading order + Jump-to-topic grid using Starlight cards. |
 | 2026-04-20 | 1.0.1 | Version pin corrected to `v1.0.1`; verified via `agent-framework` PyPI package. |
 | April 16, 2026 | 1.0 GA | Graduated from Preview; `ChatClientAgentOptions.Instructions` removed; first-party connectors; Azure App Service support. |

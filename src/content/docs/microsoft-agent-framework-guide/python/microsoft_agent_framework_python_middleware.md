@@ -386,13 +386,21 @@ class TruncateLargeJSON(FunctionMiddleware):
 `FunctionInvocationContext` also exposes a `metadata` dict that's shared across **every middleware in the same invocation**. Use it to forward a request-id, a tenant marker, or a timing measurement from one middleware to another without touching the tool's signature:
 
 ```python
+import logging
 import time
-from agent_framework import FunctionMiddleware, FunctionInvocationContext
+from agent_framework import (
+    Agent,
+    FunctionMiddleware,
+    FunctionInvocationContext,
+)
+from agent_framework.openai import OpenAIChatClient
+
+log = logging.getLogger(__name__)
 
 
 class StartTimer(FunctionMiddleware):
     async def process(self, context: FunctionInvocationContext, call_next) -> None:
-        context.metadata["t0"] = time.monotonic()
+        context.metadata["my_app.t0"] = time.monotonic()
         await call_next()
 
 
@@ -403,12 +411,15 @@ class RecordLatency(FunctionMiddleware):
     metadata flows freely. Just be careful with key names — namespace yours
     (`my_app.t0`, `my_app.tenant`) so middleware from different teams don't
     clobber each other.
+
+    Replace ``log.info`` with your real metrics emitter (Prometheus, OpenTelemetry,
+    StatsD, …); it's left as a logger here so the snippet runs without extra deps.
     """
 
     async def process(self, context: FunctionInvocationContext, call_next) -> None:
         await call_next()
-        elapsed = time.monotonic() - context.metadata["t0"]
-        metrics.record(f"tool.{context.function.name}.latency_ms", elapsed * 1_000)
+        elapsed_ms = (time.monotonic() - context.metadata["my_app.t0"]) * 1_000
+        log.info("tool.%s.latency_ms=%.2f", context.function.name, elapsed_ms)
 
 
 agent = Agent(

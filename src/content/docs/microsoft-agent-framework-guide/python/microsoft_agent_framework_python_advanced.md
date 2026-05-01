@@ -836,6 +836,9 @@ The cache is keyed on `(step_name, call_index)`, **not on arguments**. That mean
 If a step needs to *always* run (e.g., it depends on the wall clock or external state), don't decorate it with `@step` — use a plain async function inside the `@workflow` body. Or use a name that varies per call:
 
 ```python
+import time
+from agent_framework import step
+
 @step  # explicit name keeps the cache deterministic
 async def measure_now(label: str) -> float: ...
 
