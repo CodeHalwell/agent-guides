@@ -73,7 +73,7 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
 
 Notable additions in v0.9.x–0.10.0 (all verified against installed source in `.routine-envs/check-0507-node`):
 
-- **`MemorySession`** — simple in-memory session store (`SessionHistoryRewriteAwareSession`) for demos and tests. Import: `import { MemorySession } from '@openai/agents'` (re-exported from `@openai/agents-core`). Not intended for production; use `SQLiteSession` or a database-backed session for production.
+- **`MemorySession`** — simple in-memory session store (`SessionHistoryRewriteAwareSession`) for demos and tests. Import: `import { MemorySession } from '@openai/agents'` (re-exported from `@openai/agents-core`). Not intended for production; use a database-backed session store for production.
 - **Tool guardrails** (`defineToolInputGuardrail`, `defineToolOutputGuardrail`) — per-tool input/output guardrails with `ToolGuardrailBehavior` (`allow`, `rejectContent`, `throwException`). Complements existing agent-level `InputGuardrail`/`OutputGuardrail`.
 - **`toolNamespace`** — declare a tool's namespace prefix for disambiguation in multi-tool agent setups. Import: `import { toolNamespace } from '@openai/agents'`.
 - **`ModelRetrySettings` / `ModelRetryAdvice` / `ModelRetryAdviceRequest` / `ModelRetryBackoffSettings`** — configurable retry strategy with jitter and backoff. Mirror of the Python SDK's retry module.

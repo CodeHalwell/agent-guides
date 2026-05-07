@@ -1,6 +1,6 @@
 ---
 title: "OpenAI Agents SDK with TypeScript: Comprehensive Technical Guide"
-description: "Version: 1.0 Last Updated: April 2026 Language: TypeScript Framework: OpenAI Agents SDK"
+description: "Version: 1.0 Last Updated: May 2026 Language: TypeScript Framework: OpenAI Agents SDK"
 framework: openai-agents-sdk-typescript
 ---
 

@@ -83,7 +83,7 @@ import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
   - **`Session` / `SessionABC` / `SessionSettings`** — unified session protocol with `OpenAIConversationsSession` (conversations API) and `OpenAIResponsesCompactionSession` (auto-compaction). Import from `agents` directly.
   - **`MultiProvider`** — routes across multiple model providers with fallback semantics; import `from agents import MultiProvider`.
   - **`ModelRetrySettings` / `ModelRetryAdvice` / `ModelRetryAdviceRequest` / `ModelRetryBackoffSettings`** — configurable per-run retry strategy for model errors.
-  - **`ToolContext`** — subclass of `RunContextWrapper` with `tool_name`, `tool_call_id`, and `tool_arguments` fields injected by the runner; available via `from agents import ToolContext` (note: not yet in `__all__`, import from `agents.tool_context`).
+  - **`ToolContext`** — subclass of `RunContextWrapper` with `tool_name`, `tool_call_id`, and `tool_arguments` fields injected by the runner. Not yet in `agents.__all__`; import via `from agents.tool_context import ToolContext`.
   - **`Prompt` / `DynamicPromptFunction`** — dynamic instructions via callable or structured `Prompt` objects.
   - **`ToolTimeoutError`** — raised when a function tool exceeds its configured timeout.
   - **`ToolInputGuardrailTripwireTriggered` / `ToolOutputGuardrailTripwireTriggered`** — new exception types for per-tool guardrail violations.
