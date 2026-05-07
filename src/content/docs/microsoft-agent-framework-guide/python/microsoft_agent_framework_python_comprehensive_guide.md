@@ -227,39 +227,64 @@ The chat client owns the underlying HTTP session and credentials; when the clien
 
 ### Example: Router Pattern
 
+`HandoffBuilder` from `agent_framework_orchestrations` wires this pattern natively. Each agent signals a handoff by calling a synthetic tool injected by the framework; no manual classifier loop is needed.
+
 ```python
 import asyncio
 from agent_framework import Agent
 from agent_framework.openai import OpenAIChatClient
+from agent_framework_orchestrations import HandoffBuilder
 
-class RouterWorkflow:
-    def __init__(self, client: OpenAIChatClient):
-        self._router = Agent(
-            client=client,
-            instructions="You are a router. Classify the user's query as 'Billing' or 'Technical'. Respond with only one of those words.",
-        )
-        self._billing_agent = Agent(
-            client=client,
-            instructions="You are a billing support expert.",
-        )
-        self._tech_agent = Agent(
-            client=client,
-            instructions="You are a technical support expert.",
-        )
 
-    async def handle_request(self, user_query: str) -> str:
-        route_response = await self._router.run(user_query)
-        route = route_response.text
+async def main() -> None:
+    client = OpenAIChatClient()
 
-        target_agent = self._billing_agent if "Billing" in route else self._tech_agent
+    triage = Agent(
+        client=client,
+        name="triage",
+        instructions=(
+            "Identify the category of the user's query. "
+            "Hand off to 'billing' for invoice or payment questions, "
+            "or 'technical' for product or connectivity problems."
+        ),
+        description="Routes queries to the right specialist.",
+        require_per_service_call_history_persistence=True,
+    )
+    billing = Agent(
+        client=client,
+        name="billing",
+        instructions="You are a billing support expert.",
+        description="Handles billing and invoice queries.",
+        require_per_service_call_history_persistence=True,
+    )
+    technical = Agent(
+        client=client,
+        name="technical",
+        instructions="You are a technical support engineer.",
+        description="Handles technical and product queries.",
+        require_per_service_call_history_persistence=True,
+    )
 
-        final_response = await target_agent.run(user_query)
-        return final_response.text
+    workflow = (
+        HandoffBuilder(participants=[triage, billing, technical])
+        .with_start_agent(triage)
+        .add_handoff(triage, [billing, technical])
+        .build()
+    )
 
-# --- Usage ---
-# workflow = RouterWorkflow(OpenAIChatClient())
-# response = await workflow.handle_request("I have a problem with my invoice.")
-# print(response)
+    # Non-streaming: collect all events in one await.
+    result = await workflow.run("My invoice for April shows incorrect charges.")
+    for response in result.get_outputs():
+        print(response.text)
+
+    # The handoff workflow pauses after the specialist responds to wait for
+    # follow-up. Terminate the session by returning an empty message list.
+    for req in result.get_request_info_events():
+        await workflow.run(responses={req.request_id: []})
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ---
@@ -271,8 +296,11 @@ class RouterWorkflow:
 Tools are standard Python functions decorated with `@tool` from `agent_framework`.
 
 ```python
-from agent_framework import tool
+import asyncio
 from typing import Annotated
+from agent_framework import Agent, tool
+from agent_framework.openai import OpenAIChatClient
+
 
 @tool(description="Get the current time in a specified timezone.")
 async def get_current_time(
@@ -286,16 +314,19 @@ async def get_current_time(
     except zoneinfo.ZoneInfoNotFoundError:
         return "Unknown timezone."
 
-# --- Attaching the tool to an agent ---
-# from agent_framework import Agent
-# from agent_framework.openai import OpenAIChatClient
-#
-# agent = Agent(
-#     client=OpenAIChatClient(),
-#     instructions="You can get the current time.",
-#     tools=[get_current_time],
-# )
-# response = await agent.run("What time is it in New York?")
+
+async def main() -> None:
+    agent = Agent(
+        client=OpenAIChatClient(),
+        instructions="You can get the current time.",
+        tools=[get_current_time],
+    )
+    response = await agent.run("What time is it in New York?")
+    print(response.text)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ### Built-in Azure Tools
@@ -309,11 +340,12 @@ The `agent-framework-azure-ai` package provides chat clients and tool wrappers f
 Force an agent to respond in a specific JSON schema using Pydantic models.
 
 ```python
-from pydantic import BaseModel, Field
+import asyncio
 from typing import List
-
+from pydantic import BaseModel, Field
 from agent_framework import Agent
 from agent_framework.openai import OpenAIChatClient
+
 
 class UserProfile(BaseModel):
     """A model to hold structured user information."""
@@ -331,10 +363,15 @@ async def extract_structured_data(client: OpenAIChatClient, text: str) -> UserPr
     response = await agent.run(text, response_format=UserProfile)
     return response.value
 
-# --- Usage ---
-# text_blob = "My name is Jane Doe, I'm 28, and I love hiking and programming in Python."
-# profile = await extract_structured_data(OpenAIChatClient(), text_blob)
-# print(profile.model_dump_json(indent=2))
+
+async def main() -> None:
+    text_blob = "My name is Jane Doe, I'm 28, and I love hiking and programming in Python."
+    profile = await extract_structured_data(OpenAIChatClient(), text_blob)
+    print(profile.model_dump_json(indent=2))
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 For streaming structured output, the same `response_format=` argument works against `agent.run(..., stream=True)` — the framework buffers updates until enough JSON has arrived to validate, then emits the parsed `value` once on the final `AgentResponseUpdate`.

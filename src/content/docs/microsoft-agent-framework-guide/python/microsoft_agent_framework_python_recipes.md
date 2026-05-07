@@ -297,39 +297,67 @@ Three knobs on `as_tool()` worth knowing:
 
 ### Recipe 8 — Router pattern (classify + dispatch)
 
-Pure-Python routing using a stateless classifier agent and per-domain specialists.
+Use `HandoffBuilder` from `agent_framework_orchestrations` — the framework handles classifier injection, tool short-circuiting, and routing automatically. Agents signal a handoff by calling a framework-generated tool; no manual dispatch loop is needed.
 
 ```python
 # router_agent.py
 import asyncio
 from agent_framework import Agent
 from agent_framework.openai import OpenAIChatClient
-
-
-class SupportRouter:
-    def __init__(self, client: OpenAIChatClient) -> None:
-        self.router = Agent(
-            client=client,
-            instructions=(
-                "Classify the user query as one of: BILLING, TECHNICAL, ACCOUNT. "
-                "Reply with exactly that single word."
-            ),
-        )
-        self.specialists = {
-            "BILLING":   Agent(client=client, instructions="You are a billing specialist."),
-            "TECHNICAL": Agent(client=client, instructions="You are a tech-support engineer."),
-            "ACCOUNT":   Agent(client=client, instructions="You are an account-management agent."),
-        }
-
-    async def handle(self, query: str) -> str:
-        route = (await self.router.run(query)).text.strip().upper()
-        agent = self.specialists.get(route, self.specialists["TECHNICAL"])
-        return (await agent.run(query)).text
+from agent_framework_orchestrations import HandoffBuilder
 
 
 async def main() -> None:
-    router = SupportRouter(OpenAIChatClient())
-    print(await router.handle("My invoice for April is wrong."))
+    client = OpenAIChatClient()
+
+    triage = Agent(
+        client=client,
+        name="triage",
+        instructions=(
+            "Classify the user query and hand off to the right specialist: "
+            "'billing' for invoice or payment issues, "
+            "'technical' for product or connectivity problems, "
+            "'account' for login, permissions, or profile changes."
+        ),
+        description="Classifies queries and routes them to the right specialist.",
+        require_per_service_call_history_persistence=True,
+    )
+    billing = Agent(
+        client=client,
+        name="billing",
+        instructions="You are a billing specialist. Resolve invoice and payment queries.",
+        description="Handles billing and invoice queries.",
+        require_per_service_call_history_persistence=True,
+    )
+    technical = Agent(
+        client=client,
+        name="technical",
+        instructions="You are a tech-support engineer. Diagnose and resolve technical issues.",
+        description="Handles technical and product queries.",
+        require_per_service_call_history_persistence=True,
+    )
+    account = Agent(
+        client=client,
+        name="account",
+        instructions="You are an account-management agent. Handle login, permissions, and profile changes.",
+        description="Handles account and access queries.",
+        require_per_service_call_history_persistence=True,
+    )
+
+    workflow = (
+        HandoffBuilder(participants=[triage, billing, technical, account])
+        .with_start_agent(triage)
+        .add_handoff(triage, [billing, technical, account])
+        .build()
+    )
+
+    result = await workflow.run("My invoice for April is wrong.")
+    for response in result.get_outputs():
+        print(response.text)
+
+    # Terminate the session after the first specialist response.
+    for req in result.get_request_info_events():
+        await workflow.run(responses={req.request_id: []})
 
 
 if __name__ == "__main__":
