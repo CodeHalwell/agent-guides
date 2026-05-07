@@ -35,6 +35,77 @@ class CompactionStrategy(Protocol):
 
 Returns `True` if the message list was modified.
 
+## Truncation — oldest-first, single threshold
+
+`TruncationStrategy` triggers when the message count (or token count) exceeds `max_n` and then trims oldest groups until the metric falls to `compact_to`. It never splits a tool-call group — a function call and its result are always excluded together.
+
+```python
+import asyncio
+from agent_framework import (
+    Content,
+    Message,
+    TruncationStrategy,
+    apply_compaction,
+)
+
+# Build a short conversation: system anchor + 10 user/assistant pairs.
+messages: list[Message] = [
+    Message(role="system", contents=[Content.from_text("You are a concise assistant.")]),
+]
+for i in range(10):
+    messages.append(Message(role="user", contents=[Content.from_text(f"Question {i}")]))
+    messages.append(Message(role="assistant", contents=[Content.from_text(f"Answer {i}")]))
+
+# Trim when > 12 messages are included; compact down to 8 (4 exchanges).
+strategy = TruncationStrategy(
+    max_n=12,
+    compact_to=8,
+    preserve_system=True,   # never drop the system anchor
+)
+
+projected = asyncio.run(apply_compaction(messages, strategy=strategy))
+
+# System message + the 4 most-recent user/assistant pairs survive.
+print(len(projected))   # 9  (1 system + 4×2 user+assistant)
+```
+
+### Token-based truncation
+
+Pass a tokenizer to switch from message-count to token-count mode. The same `max_n` / `compact_to` knobs then apply to tokens instead of message counts:
+
+```python
+import tiktoken
+from agent_framework import TruncationStrategy, TokenizerProtocol
+
+
+class TiktokenTokenizer:
+    def __init__(self, model: str = "gpt-4o-mini") -> None:
+        self._enc = tiktoken.encoding_for_model(model)
+
+    def count_tokens(self, text: str) -> int:
+        return len(self._enc.encode(text))
+
+
+# Trigger when the conversation exceeds 4 000 tokens; trim to 3 000.
+token_strategy = TruncationStrategy(
+    max_n=4_000,
+    compact_to=3_000,
+    tokenizer=TiktokenTokenizer(),
+    preserve_system=True,
+)
+```
+
+**When to prefer `TruncationStrategy` over `SlidingWindowStrategy`:**
+
+| | `TruncationStrategy` | `SlidingWindowStrategy` |
+|---|---|---|
+| Trigger | When a threshold is exceeded | Every time (always trims) |
+| Metric | Message count *or* token count | Group count only |
+| Cut target | Trim to a specific goal | Keep the last N groups |
+| Idle cost | Zero — doesn't fire until `max_n` | Always runs |
+
+`TruncationStrategy` is the right choice when you want a hard cap with hysteresis: "don't do anything unless we're over budget, then cut back to a comfortable target."
+
 ## Sliding window — simplest
 
 ```python

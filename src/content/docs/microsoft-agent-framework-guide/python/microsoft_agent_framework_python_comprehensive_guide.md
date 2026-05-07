@@ -1314,6 +1314,222 @@ await agent.run("What's my balance?", function_invocation_kwargs={"token": user_
 
 ---
 
+## Exposing an Agent as a Tool — `as_tool()`
+
+Any agent can be wrapped as a `FunctionTool` and handed to another agent. The outer agent sees the inner agent as a callable tool — it passes a task string, the inner agent runs, and the text response comes back as the tool result.
+
+```python
+import asyncio
+from agent_framework import Agent, tool
+from agent_framework.openai import OpenAIChatClient
+
+
+async def main() -> None:
+    client = OpenAIChatClient()
+
+    # A specialist agent that knows only about Python packaging.
+    packaging_agent = Agent(
+        client=client,
+        name="packaging_expert",
+        description="Answers questions about Python packaging, pip, and pyproject.toml.",
+        instructions="You are a Python packaging expert. Be concise.",
+    )
+
+    # Convert to a tool. The model sees `packaging_expert(task: str)`.
+    packaging_tool = packaging_agent.as_tool(
+        # name defaults to agent.name — override to rename what the model sees
+        name="packaging_expert",
+        # description defaults to agent.description — used as the tool description
+        description="Ask the Python packaging expert a question.",
+        # arg_name changes the single parameter name the model uses (default "task")
+        arg_name="question",
+        arg_description="A specific question about Python packaging.",
+        # "never_require" (default) — runs without pausing for approval.
+        # "always_require" — pauses with a function_approval_request event.
+        approval_mode="never_require",
+    )
+
+    # Supervisor wires the specialist in as a tool.
+    supervisor = Agent(
+        client=client,
+        name="supervisor",
+        instructions="You coordinate specialised tools. Delegate packaging questions to the expert.",
+        tools=[packaging_tool],
+    )
+
+    response = await supervisor.run("How do I declare optional dependencies in pyproject.toml?")
+    print(response.text)
+
+
+asyncio.run(main())
+```
+
+### Shared vs independent sessions — `propagate_session`
+
+By default each tool invocation runs in the inner agent's own independent session (no history shared with the parent). Set `propagate_session=True` to forward the parent's session to the sub-agent so both agents write into the same conversation history:
+
+```python
+shared_tool = packaging_agent.as_tool(
+    propagate_session=True,   # inner agent sees the parent's message history
+)
+
+# Both supervisor and packaging_agent now accumulate into the same session.
+session = supervisor.create_session()
+r1 = await supervisor.run("What is PEP 517?", session=session, tools=[shared_tool])
+r2 = await supervisor.run("And PEP 518?", session=session, tools=[shared_tool])
+```
+
+Useful when you want a supervisor + specialist pair to feel like one continuous conversation to the user. Avoid it when sub-agents are stateless utilities — unnecessary history accumulation raises token costs.
+
+### Streaming sub-agent output — `stream_callback`
+
+The tool normally buffers the inner agent's full response before returning. Add `stream_callback=` to receive incremental `AgentResponseUpdate` chunks as they arrive from the sub-agent — useful for showing progress in long-running inner agents:
+
+```python
+from agent_framework import AgentResponseUpdate
+
+
+async def on_chunk(update: AgentResponseUpdate) -> None:
+    if update.text:
+        print(f"[packaging_expert] {update.text}", end="", flush=True)
+
+
+streaming_tool = packaging_agent.as_tool(
+    name="packaging_expert",
+    stream_callback=on_chunk,
+)
+supervisor = Agent(client=client, instructions="...", tools=[streaming_tool])
+await supervisor.run("Explain the difference between hatch and flit.")
+```
+
+`stream_callback` is called for every `AgentResponseUpdate` the inner agent produces; the outer supervisor still waits for the full result before continuing its own turn. The callback may be sync or async.
+
+### Composing many agents as tools
+
+```python
+from agent_framework import Agent
+from agent_framework.openai import OpenAIChatClient
+
+client = OpenAIChatClient()
+
+specialists = {
+    name: Agent(client=client, name=name, description=desc, instructions=f"You are a {name} expert.")
+    for name, desc in [
+        ("legal", "Reviews contracts and regulatory requirements."),
+        ("finance", "Analyses costs, ROI, and financial risk."),
+        ("security", "Audits for vulnerabilities and compliance gaps."),
+    ]
+}
+
+# One call per specialist — each becomes an independent tool.
+tools = [agent.as_tool() for agent in specialists.values()]
+
+orchestrator = Agent(
+    client=client,
+    name="orchestrator",
+    instructions="Coordinate the specialists. Delegate domain questions to the right expert.",
+    tools=tools,
+)
+
+response = await orchestrator.run("Review this vendor proposal for risk.")
+print(response.text)
+```
+
+The model sees three tools named `legal`, `finance`, and `security`. It chooses which ones to call based on the question — no router logic required.
+
+---
+
+## Exposing an Agent as an MCP Server — `as_mcp_server()`
+
+`as_mcp_server()` turns any agent into a low-level [MCP](https://modelcontextprotocol.io/) server. The agent is exposed as a single callable tool — any MCP-compatible client (Claude Desktop, other agents, custom runners) can connect and invoke it. Useful for publishing an agent as a reusable service.
+
+```python
+import asyncio
+from mcp.server.stdio import stdio_server
+from agent_framework import Agent
+from agent_framework.openai import OpenAIChatClient
+
+
+async def main() -> None:
+    agent = Agent(
+        client=OpenAIChatClient(),
+        name="weather_agent",
+        instructions="You answer questions about the weather.",
+    )
+
+    # Build the MCP server — the agent becomes one tool named after agent.name.
+    server = agent.as_mcp_server(
+        server_name="WeatherService",   # name advertised in the MCP handshake
+        version="1.0.0",
+        instructions="Call the weather_agent tool to answer weather questions.",
+    )
+
+    # Serve over stdio — compatible with Claude Desktop, npx @modelcontextprotocol/inspector, etc.
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(
+            read_stream,
+            write_stream,
+            server.create_initialization_options(),
+        )
+
+
+asyncio.run(main())
+```
+
+**What the MCP client sees:** one tool named `weather_agent` (the agent's `name`) with a single `task: str` argument. Calling it runs `agent.run(task)` and returns the text response.
+
+### Serving over HTTP with Starlette
+
+For production deployments, mount the server on an HTTP endpoint instead of stdio:
+
+```python
+import uvicorn
+from starlette.applications import Starlette
+from starlette.routing import Mount
+from mcp.server.sse import SseServerTransport
+from agent_framework import Agent
+from agent_framework.openai import OpenAIChatClient
+
+
+def build_app() -> Starlette:
+    agent = Agent(
+        client=OpenAIChatClient(),
+        name="research_agent",
+        instructions="You are a research assistant.",
+    )
+    mcp_server = agent.as_mcp_server(
+        server_name="ResearchService",
+        version="0.1.0",
+    )
+
+    sse_transport = SseServerTransport("/messages")
+
+    async def handle_sse(request):
+        async with sse_transport.connect_sse(request.scope, request.receive, request._send) as streams:
+            await mcp_server.run(streams[0], streams[1], mcp_server.create_initialization_options())
+
+    return Starlette(
+        routes=[
+            Mount("/sse", app=handle_sse),
+            Mount("/messages", app=sse_transport.handle_post_message),
+        ]
+    )
+
+
+if __name__ == "__main__":
+    uvicorn.run(build_app(), host="0.0.0.0", port=8080)
+```
+
+An MCP-compatible agent (using `MCPStreamableHTTPTool` or `MCPWebsocketTool`) can now call your agent over the network as a tool — full Agent Framework ↔ MCP interoperability with no custom serialization.
+
+### Key constraints
+
+- `as_mcp_server()` requires `mcp` to be installed (`pip install mcp`). The check is lazy — import errors surface only when the method is called, not at module load.
+- Only text content is forwarded over MCP at this time; rich content (images, audio) in tool results is omitted with a warning.
+- Log level on the MCP session follows the server's Python `logging` level — call `_set_logging_level` from the MCP client side to adjust dynamically.
+
+---
+
 ## Custom Chat Clients
 
 `BaseChatClient` is the abstract parent every first-party client inherits from. Implement one method (`_inner_get_response`) and the framework wraps your code with the tool loop, middleware, telemetry, and serialization:

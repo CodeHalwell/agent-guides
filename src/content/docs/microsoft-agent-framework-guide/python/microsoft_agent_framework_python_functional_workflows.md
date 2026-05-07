@@ -284,6 +284,100 @@ async def stateful_pipeline(items: list[str], ctx: RunContext) -> str:
 
 State survives checkpoints — `get_state` / `set_state` values are persisted when a checkpoint is taken.
 
+## `get_run_context()` — accessing `RunContext` from nested helpers
+
+Adding a `RunContext` parameter works inside the `@workflow` function and `@step` functions, but sometimes you need access to the active context from a helper that isn't annotated at all — a shared utility, a library function, or a deeply nested call that you don't want to thread `ctx` through manually.
+
+`get_run_context()` returns the `RunContext` bound to the currently executing `@workflow`, or `None` when called outside a workflow:
+
+```python
+import asyncio
+from agent_framework import Agent, get_run_context, step, workflow
+from agent_framework.openai import OpenAIChatClient
+
+client = OpenAIChatClient()
+researcher = Agent(client=client, name="researcher", instructions="Return bullet-point facts.")
+
+
+async def _emit_progress(label: str, detail: str) -> None:
+    """Shared helper — works inside any @workflow without needing a ctx parameter."""
+    from agent_framework import WorkflowEvent
+
+    ctx = get_run_context()
+    if ctx is not None:
+        # We're inside a running @workflow — emit a progress event.
+        await ctx.add_event(WorkflowEvent(type="progress", data={"step": label, "detail": detail}))
+    else:
+        # Called from outside a workflow (tests, scripts) — log instead.
+        print(f"[{label}] {detail}")
+
+
+@step
+async def research(topic: str) -> str:
+    await _emit_progress("research", f"starting research on {topic!r}")
+    result = await researcher.run(f"Research: {topic}")
+    await _emit_progress("research", "done")
+    return result.text
+
+
+@workflow
+async def pipeline(topic: str) -> str:
+    facts = await research(topic)
+    return facts
+
+
+async def main() -> None:
+    # Streaming caller sees the progress events in real time.
+    stream = pipeline.run("neuromorphic computing", stream=True)
+    async for event in stream:
+        if event.type == "progress":
+            print("progress:", event.data)
+        elif event.type == "output":
+            print("output:", event.data)
+
+
+asyncio.run(main())
+```
+
+Key points:
+
+- `get_run_context()` uses a `ContextVar` internally, so it is **coroutine-safe** — concurrent `asyncio.gather` calls each see their own active context.
+- When the helper is called from outside a `@workflow` (unit tests, REPL, scripts), `get_run_context()` returns `None`. The pattern above gracefully degrades to a plain `print`.
+- The function is marked `experimental` (same flag as `RunContext`). Import it from `agent_framework` directly: `from agent_framework import get_run_context`.
+
+### Reading run state from a helper
+
+Because `get_run_context()` returns the live `RunContext`, you can read and write workflow-scoped state from anywhere inside the call stack:
+
+```python
+from agent_framework import get_run_context
+
+
+async def record_step_cost(tokens_used: int) -> None:
+    ctx = get_run_context()
+    if ctx is None:
+        return
+    current = ctx.get_state("total_tokens", default=0)
+    ctx.set_state("total_tokens", current + tokens_used)
+
+
+@step
+async def expensive_search(query: str) -> str:
+    results = await some_search_api(query)
+    await record_step_cost(tokens_used=len(results) // 4)
+    return results
+
+
+@workflow
+async def search_pipeline(query: str) -> str:
+    findings = await expensive_search(query)
+    ctx = get_run_context()   # can also be called here — we're inside @workflow
+    print(f"total tokens so far: {ctx.get_state('total_tokens', 0)}")
+    return findings
+```
+
+State written via `ctx.set_state(...)` is included in checkpoints, so token accounting survives process restarts.
+
 ## Parallel execution
 
 Use native `asyncio` for parallelism — no special API needed:
