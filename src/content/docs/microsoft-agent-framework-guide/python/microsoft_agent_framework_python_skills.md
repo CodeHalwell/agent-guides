@@ -9,7 +9,7 @@ language: python
 
 Skills are a **progressive-disclosure** knowledge pattern. Instead of stuffing every reference doc and procedure into the system prompt, you advertise skill *names and descriptions* (cheap), let the model decide which to load (`load_skill`), and then fetch resources (`read_skill_resource`) or run scripts (`run_skill_script`) on demand. The total context stays small until the agent actually needs deeper knowledge.
 
-This follows the [Agent Skills specification](https://agentskills.io). Verified against `agent-framework-core==1.2.2` (`agent_framework._skills`). Marked `experimental` — API may evolve.
+This follows the [Agent Skills specification](https://agentskills.io). Verified against `agent-framework-core==1.3.0` (`agent_framework._skills`). Marked `experimental` — API may evolve.
 
 ## The primitives
 
@@ -486,6 +486,131 @@ provider = SkillsProvider(
     require_script_approval=True,
 )
 ```
+
+## Class-based skills — `ClassSkill`
+
+`ClassSkill` is the pattern for distributable, self-contained skills. Subclass it and mark methods with `@ClassSkill.resource` or `@ClassSkill.script` decorators — the framework discovers them automatically when you construct the instance.
+
+This is the recommended approach when you want to publish a skill as part of a shared library or PyPI package, because the skill and all its resources live in one cohesive class.
+
+```python
+import json
+from agent_framework import Agent, ClassSkill, SkillsProvider
+from agent_framework.openai import OpenAIChatClient
+
+
+class UnitConverterSkill(ClassSkill):
+    """Convert between common measurement units."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="unit-converter",
+            description="Convert values between common units of length, weight, and temperature.",
+        )
+
+    @property
+    def instructions(self) -> str:
+        return (
+            "Use `read_skill_resource('unit-converter', 'table')` to see the conversion "
+            "factors, then call `run_skill_script('unit-converter', 'convert', {...})` "
+            "to do the actual math."
+        )
+
+    @ClassSkill.resource(name="table", description="Lookup table of conversion factors.")
+    def conversion_table(self) -> str:
+        return (
+            "| From | To | Factor |\n"
+            "|------|-----|--------|\n"
+            "| km   | mi  | 0.6214 |\n"
+            "| kg   | lb  | 2.2046 |\n"
+            "| °C   | °F  | ×9/5+32 |"
+        )
+
+    @ClassSkill.script(name="convert", description="Multiply a value by a factor.")
+    def convert(self, value: float, factor: float) -> str:
+        """Apply a numeric conversion factor to a value."""
+        return json.dumps({"result": round(value * factor, 4)})
+
+
+agent = Agent(
+    client=OpenAIChatClient(),
+    instructions="You are a unit conversion assistant.",
+    context_providers=[SkillsProvider(skills=[UnitConverterSkill()])],
+)
+```
+
+You can also stack `@property` with `@ClassSkill.resource` — place `@property` first (innermost), then `@ClassSkill.resource`:
+
+```python
+class InventorySkill(ClassSkill):
+    def __init__(self) -> None:
+        super().__init__(name="inventory", description="Check warehouse stock levels.")
+
+    @property
+    def instructions(self) -> str:
+        return "Use `read_skill_resource('inventory', 'live-stock')` to get current stock."
+
+    @property
+    @ClassSkill.resource(name="live-stock", description="Current stock snapshot from the warehouse API.")
+    def stock_snapshot(self) -> str:
+        # Called fresh on every `read_skill_resource` invocation.
+        return fetch_stock_sync()
+```
+
+Both sync and async methods work. The framework awaits async callables automatically.
+
+## Composing skill sources
+
+When skills come from multiple origins — your app's code, a shared library, a filesystem directory — compose them using the source primitives:
+
+```python
+from agent_framework import (
+    Agent,
+    AggregatingSkillsSource,
+    DeduplicatingSkillsSource,
+    FileSkillsSource,
+    FilteringSkillsSource,
+    InMemorySkillsSource,
+    SkillsProvider,
+)
+from agent_framework.openai import OpenAIChatClient
+
+
+# Three independent sources
+app_source  = InMemorySkillsSource([db_skill, stats_skill])
+lib_source  = InMemorySkillsSource([UnitConverterSkill(), InventorySkill()])
+disk_source = FileSkillsSource(paths=["./shared-skills"])
+
+# Merge all three into one
+combined = AggregatingSkillsSource([app_source, lib_source, disk_source])
+
+# Remove duplicates (first-one-wins, case-insensitive name match)
+deduplicated = DeduplicatingSkillsSource(combined)
+
+# Expose only production-ready skills in staging
+staging_only = FilteringSkillsSource(
+    deduplicated,
+    predicate=lambda skill: not skill.name.startswith("experimental-"),
+)
+
+agent = Agent(
+    client=OpenAIChatClient(),
+    instructions="You are a multi-domain assistant.",
+    context_providers=[SkillsProvider(source=staging_only)],
+)
+```
+
+### Source primitives at a glance
+
+| Class | What it does |
+|---|---|
+| `InMemorySkillsSource(skills)` | Hold pre-built `Skill` instances in memory |
+| `FileSkillsSource(paths)` | Discover `SKILL.md`-based skills from one or more directories |
+| `AggregatingSkillsSource(sources)` | Merge many sources into one ordered list |
+| `DeduplicatingSkillsSource(inner)` | Remove skills with duplicate names (first wins) |
+| `FilteringSkillsSource(inner, predicate)` | Keep only skills where `predicate(skill)` is `True` |
+
+`SkillsProvider` accepts either `skills=[...]` / `skill_paths=...` for the common case, or `source=` for a fully composed `SkillsSource` when you need the above pipeline.
 
 ## Custom instruction template
 

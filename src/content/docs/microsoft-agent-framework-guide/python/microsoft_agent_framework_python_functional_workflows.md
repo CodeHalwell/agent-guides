@@ -1,17 +1,17 @@
 ---
 title: "Microsoft Agent Framework (Python) — Functional Workflows"
-description: "Build workflows with plain Python functions using the @workflow and @step decorators, RunContext for HITL and state, FunctionalWorkflow checkpointing, and as_agent() for multi-agent composition. Verified against agent-framework-core 1.2.2."
+description: "Build workflows with plain Python functions using the @workflow and @step decorators, RunContext for HITL and state, FunctionalWorkflow checkpointing, and as_agent() for multi-agent composition. Verified against agent-framework-core 1.3.0."
 framework: microsoft-agent-framework
 language: python
 ---
 
 # Functional Workflows — Python
 
-> **Experimental.** `FunctionalWorkflow`, `@workflow`, `@step`, and `RunContext` are marked `ExperimentalFeature` in `agent-framework-core==1.2.2`. The API is stable enough to build on but may change between minor releases.
+> **Experimental.** `FunctionalWorkflow`, `@workflow`, `@step`, and `RunContext` are marked `ExperimentalFeature` in `agent-framework-core==1.3.0`. The API is stable enough to build on but may change between minor releases.
 
 Functional workflows let you write a workflow as a plain `async` Python function — no executor classes, no graph wiring, no edge objects. Control flow is ordinary Python: `if`/`else`, `for`, `asyncio.gather`. The framework tracks step results, emits events, handles HITL pauses, and persists checkpoints automatically.
 
-Verified against `agent-framework-core==1.2.2` (`agent_framework._workflows._functional`).
+Verified against `agent-framework-core==1.3.0` (`agent_framework._workflows._functional`).
 
 ## When to choose functional vs graph workflows
 
@@ -283,6 +283,70 @@ async def stateful_pipeline(items: list[str], ctx: RunContext) -> str:
 ```
 
 State survives checkpoints — `get_state` / `set_state` values are persisted when a checkpoint is taken.
+
+### Accessing RunContext from helper functions — `get_run_context()`
+
+When a helper function called from inside a `@workflow` (or a `@step`) needs `RunContext` but doesn't have it in its signature, use the `get_run_context()` free function. It retrieves the active context from the current asyncio task without threading it through every call site.
+
+```python
+import asyncio
+from agent_framework import Agent, RunContext, WorkflowEvent, get_run_context, step, workflow
+from agent_framework.openai import OpenAIChatClient
+
+client = OpenAIChatClient()
+analyst = Agent(client=client, name="analyst", instructions="Analyse the document.")
+
+
+async def _emit_progress(label: str) -> None:
+    """Emit a progress event without requiring a ctx parameter."""
+    ctx = get_run_context()
+    if ctx is not None:
+        await ctx.add_event(WorkflowEvent(type="progress", data={"stage": label}))
+
+
+@step
+async def analyse(doc: str) -> str:
+    await _emit_progress("analysis-start")
+    result = await analyst.run(doc)
+    await _emit_progress("analysis-done")
+    return result.text
+
+
+@workflow
+async def doc_pipeline(doc: str) -> str:
+    summary = await analyse(doc)
+    return summary
+```
+
+`get_run_context()` returns `None` when called outside a running `@workflow`, so it is safe to call from utility code that can run in either context.
+
+### Adapting behaviour with `ctx.is_streaming`
+
+Sometimes you want to emit fine-grained events only when the caller is already consuming a stream — otherwise the overhead is wasted. Check `ctx.is_streaming` to decide:
+
+```python
+from agent_framework import RunContext, WorkflowEvent, workflow, step
+
+
+@step
+async def heavy_step(data: str, ctx: RunContext) -> str:
+    result = await run_expensive_computation(data)
+
+    # Only emit detailed telemetry when streaming — avoids allocating
+    # events that nobody is listening to in non-streaming batch runs.
+    if ctx.is_streaming():
+        await ctx.add_event(WorkflowEvent(
+            type="telemetry",
+            data={"tokens_used": len(result.split()), "step": "heavy_step"},
+        ))
+
+    return result
+
+
+@workflow
+async def batch_pipeline(items: list[str], ctx: RunContext) -> list[str]:
+    return [await heavy_step(item, ctx) for item in items]
+```
 
 ## Parallel execution
 

@@ -1,20 +1,20 @@
 ---
 title: "Microsoft Agent Framework Python - Comprehensive Technical Guide"
-description: "Comprehensive technical guide for the Microsoft Agent Framework on Python. Verified against agent-framework 1.2.2 — chat clients, tools, sessions, middleware, MCP, skills, workflows, evaluation, and observability."
+description: "Comprehensive technical guide for the Microsoft Agent Framework on Python. Verified against agent-framework 1.3.0 — chat clients, tools, sessions, middleware, MCP, skills, workflows, evaluation, and observability."
 framework: microsoft-agent-framework
 language: python
 ---
 
-Latest verified release: 1.2.2 | Python 3.10+
+Latest verified release: 1.3.0 | Python 3.10+
 # Microsoft Agent Framework Python - Comprehensive Technical Guide
 
-**Framework Version:** 1.2.2 (`agent-framework` and `agent-framework-core`)
+**Framework Version:** 1.3.0 (`agent-framework` and `agent-framework-core`)
 **Target Platform:** Python 3.10+
 **Quick check:** `pip index versions agent-framework`
 
 ---
 
-> **API reference (verified against `agent-framework-core==1.2.2`).**
+> **API reference (verified against `agent-framework-core==1.3.0`).**
 >
 > - **Package name / import root:** `agent_framework` (underscores). Install with `pip install agent-framework`.
 > - **Primary agent class:** `Agent`. Construct with `Agent(client=<ChatClient>, instructions=..., tools=[...])`.

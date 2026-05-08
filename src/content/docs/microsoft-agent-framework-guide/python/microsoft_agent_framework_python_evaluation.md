@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Agent Framework (Python) — Evaluation"
-description: "Quality gates for agents and workflows: evaluate_agent, evaluate_workflow, LocalEvaluator, @evaluator decorator, keyword_check and tool_call helpers — all from agent-framework-core 1.2.2."
+description: "Quality gates for agents and workflows: evaluate_agent, evaluate_workflow, LocalEvaluator, @evaluator decorator, keyword_check and tool_call helpers — all from agent-framework-core 1.3.0."
 framework: microsoft-agent-framework
 language: python
 ---
@@ -11,7 +11,7 @@ language: python
 
 Everything is in-process by default — no Azure AI Foundry / Microsoft Foundry dependency required. Plug a cloud evaluator in alongside `LocalEvaluator` when you want LLM-judge / risk / groundedness checks.
 
-Verified against `agent-framework-core==1.2.2` (`agent_framework._evaluation`). This module is marked `experimental` — API may evolve.
+Verified against `agent-framework-core==1.3.0` (`agent_framework._evaluation`). This module is marked `experimental` — API may evolve.
 
 ## The three building blocks
 
@@ -246,6 +246,78 @@ assert item.response == "16"
 item_full = EvalItem(conversation=conversation, split_strategy=ConversationSplit.FULL)
 assert item_full.query == "What's 2+2?"
 assert "4" in item_full.response and "16" in item_full.response
+```
+
+### Per-turn evaluation — `EvalItem.per_turn_items()`
+
+`per_turn_items` splits a multi-turn conversation into one `EvalItem` per user turn. Each item has cumulative context — the full conversation up to that user message — so you can evaluate every individual response in its actual conversation context rather than just the final one.
+
+This is the right approach when you want to check quality at each step of an assistant conversation, not just at the end:
+
+```python
+import asyncio
+from agent_framework import (
+    Agent,
+    EvalItem,
+    LocalEvaluator,
+    Message,
+    evaluate_agent,
+    keyword_check,
+    tool_called_check,
+)
+from agent_framework.openai import OpenAIChatClient
+
+
+async def evaluate_multi_turn() -> None:
+    agent = Agent(
+        client=OpenAIChatClient(),
+        instructions="You are a helpful shopping assistant.",
+    )
+
+    # Record a full multi-turn transcript
+    session = agent.create_session()
+    r1 = await agent.run("Show me laptops under $1000.", session=session)
+    r2 = await agent.run("Which has the best battery life?", session=session)
+    r3 = await agent.run("Can you compare the top two?", session=session)
+
+    # Reconstruct the transcript from session history
+    history = await session.get_messages()
+
+    # Split into one EvalItem per user turn — each item has the full
+    # conversation context up to that turn.
+    items = EvalItem.per_turn_items(history)
+    print(f"{len(items)} turns to evaluate")   # → 3
+
+    # Evaluate every turn with the same checks
+    local = LocalEvaluator(keyword_check("laptop"), keyword_check("price"))
+
+    [results] = await local.evaluate(items)
+    for item_result in results.items:
+        print(f"  Turn {item_result.item_id}: {item_result.status}")
+        print(f"    Q: {item_result.input_text[:60]!r}")
+        print(f"    A: {item_result.output_text[:60]!r}")
+
+
+asyncio.run(evaluate_multi_turn())
+```
+
+`per_turn_items` accepts the same `tools` and `context` keyword arguments as `EvalItem.__init__` — they're shared across all generated items:
+
+```python
+from agent_framework import EvalItem, FunctionTool, tool
+
+
+@tool
+def search_products(query: str) -> str:
+    """Search the product catalogue."""
+    return f"Results for {query}"
+
+
+items = EvalItem.per_turn_items(
+    history,
+    tools=[search_products],            # same tools visible to each turn
+    context="User is a premium member", # same grounding context for each turn
+)
 ```
 
 ### Custom splitter — evaluate just before a tool call
