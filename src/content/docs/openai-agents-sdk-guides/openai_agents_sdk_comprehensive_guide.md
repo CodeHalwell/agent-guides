@@ -4,7 +4,7 @@ description: "A complete reference for building production-ready multi-agent AI 
 framework: openai-agents-sdk
 ---
 
-Latest: 0.15.1 | Updated: May 2, 2026
+Latest: 0.16.1 | Updated: May 8, 2026
 # OpenAI Agents SDK: Comprehensive Technical Guide
 
 A complete reference for building production-ready multi-agent AI applications with the OpenAI Agents SDK. This guide covers everything from installation through advanced patterns.
@@ -3133,6 +3133,7 @@ This comprehensive framework enables developers to build production-grade AI app
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.16.1 | May 8, 2026 | Minor release (two releases: 0.16.0, 0.16.1). New exports confirmed in installed source: `ComputerTool`, `AsyncComputer`, `Computer`, `ComputerProvider`, `ApplyPatchTool`, `ApplyPatchEditor`; `LocalShellTool`, `ShellTool`, expanded shell-container types; `ToolInputGuardrail`, `ToolOutputGuardrail`, `ToolInputGuardrailTripwireTriggered`, `ToolOutputGuardrailTripwireTriggered`; `OpenAIResponsesCompactionAwareSession`, `OpenAIResponsesCompactionSession`, `OpenAIResponsesCompactionArgs`; `RetryPolicy`, `ModelRetrySettings`, `ModelRetryAdvice`; `DynamicPromptFunction`, `GenerateDynamicPromptData`; `OpenAIConversationsSession`; `MCPApprovalRequestItem`, `MCPToolApprovalFunction`; `ToolApprovalItem`; `ToolTimeoutError`; `ToolSearchTool`, `HostedMCPTool`. All core symbols (`Agent`, `Runner`, `Handoff`, `function_tool`, `ItemHelpers`, `ComputerTool`, `LocalShellTool`) verified against installed 0.16.1 (`.routine-envs/check-0508`). |
 | 0.15.1 | May 2, 2026 | Patch release; stability and dependency updates. Version confirmed against installed `openai-agents 0.15.1` (`.routine-envs/check-openai-0502`); `Agent`, `Runner`, `Handoff`, `guardrail` imports verified with `-W error::DeprecationWarning`. |
 | 0.15.0 | May 1, 2026 | Minor release; stability and dependency updates. Version confirmed against installed `openai-agents 0.15.0` (`.routine-envs/check-openai-0501`); `Agent`, `Runner`, `Handoff`, `guardrail` imports verified with `-W error::DeprecationWarning`. |
 | 0.14.8 | April 29, 2026 | Patch release; stability improvements. Version confirmed against installed `openai-agents 0.14.8` (`.routine-envs/main-py-0429`); `Agent`, `Runner`, `Handoff`, `guardrail` imports verified. |
