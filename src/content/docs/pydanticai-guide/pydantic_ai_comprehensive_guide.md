@@ -1,14 +1,14 @@
 ---
 title: "Pydantic AI: Comprehensive Technical Guide"
-description: "Version: 1.90.0 (May 2026) Framework: Pydantic AI - GenAI Agent Framework, the Pydantic Way Author Notes: Exhaustive technical documentation with production patterns, type safety"
+description: "Version: 1.92.0 (May 2026) Framework: Pydantic AI - GenAI Agent Framework, the Pydantic Way Author Notes: Exhaustive technical documentation with production patterns, type safety"
 framework: pydanticai
 ---
 
-Latest: 1.90.0 | Updated: May 5, 2026
+Latest: 1.92.0 | Updated: May 8, 2026
 # Pydantic AI: Comprehensive Technical Guide
 ## From Beginner to Expert Level
 
-**Version:** 1.90.0 (May 2026)  
+**Version:** 1.92.0 (May 2026)  
 **Framework:** Pydantic AI - GenAI Agent Framework, the Pydantic Way  
 **Author Notes:** Exhaustive technical documentation with production patterns, type safety emphasis, and FastAPI-inspired developer experience.
 
@@ -2148,6 +2148,7 @@ Source: `pydantic_ai/capabilities/wrapper.py` (installed 1.87.0; confirmed uncha
 
 | Version | Date | Changes |
 |---------|------|----------|
+| 1.92.0 | May 8, 2026 | Minor release (two releases: 1.91.0, 1.92.0). New modules confirmed against installed source: `pydantic_ai.embeddings` (`EmbeddingModel`, `Embedder`, `TestEmbeddingModel`, `EmbeddingResult`, `EmbeddingSettings`, `KnownEmbeddingModelName`, `WrapperEmbeddingModel`, `infer_embedding_model`); `pydantic_ai.direct` (`model_request`, `model_request_stream`, `model_request_sync`, `model_request_stream_sync`); `pydantic_ai.profiles` (`ModelProfile`, `ModelProfileSpec`, `StructuredOutputMode`); `pydantic_ai.concurrency` (`ConcurrencyLimit`, `ConcurrencyLimiter`, `AbstractConcurrencyLimiter`); `pydantic_ai.format_prompt` (`format_as_xml`). All existing symbols pass. Verified against installed 1.92.0 (`.routine-envs/check-0508`). |
 | 1.90.0 | May 5, 2026 | Patch release; `DeferredToolCalls` in `pydantic_ai.output` marked `@deprecated` — use `DeferredToolRequests` (guides already use the correct API). Version confirmed against installed `pydantic-ai 1.90.0` (`.routine-envs/check-0505`); `Agent` (TestModel), `FunctionToolset`, `DeferredToolRequests`, `HandleDeferredToolCalls`, `ImageGenerationTool`, `MemoryTool`, `XSearchTool`, `RenamedToolset`, `WrapperToolset` all import successfully with no DeprecationWarnings. |
 | 1.89.1 | May 2, 2026 | Patch release; maintenance and dependency updates. Version confirmed against installed `pydantic-ai 1.89.1` (`.routine-envs/check-pydantic-0502`); `Agent`, `OpenAIModel` imports verified with `-W error::DeprecationWarning`. |
 | 1.89.0 | May 1, 2026 | Patch release; maintenance and dependency updates. Version confirmed against installed `pydantic-ai 1.89.0` (`.routine-envs/check-pydantic-0501`); `Agent`, `OpenAIModel` imports verified with `-W error::DeprecationWarning`. |
