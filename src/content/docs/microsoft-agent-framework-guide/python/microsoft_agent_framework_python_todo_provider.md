@@ -118,32 +118,27 @@ asyncio.run(main())
 
 `TodoFileStore` writes atomically (write to a temp file, then `os.replace`) so a crash mid-write never leaves a corrupted state file.
 
-## Multiple providers per agent
+## `source_id` and storage isolation
 
-You can attach multiple `TodoProvider` instances with different `source_id` values — for example, one for immediate tasks and one for a longer-term backlog:
+`source_id` is a string key that routes the provider's storage to a separate bucket on disk. It does **not** affect tool names — the tools (`add_todos`, `complete_todos`, etc.) are always registered with those exact names regardless of `source_id`.
+
+This means **attaching multiple `TodoProvider` instances to the same agent causes duplicate tool-name registrations** — the LLM cannot distinguish between them via tool name. Use a single `TodoProvider` per agent. The `source_id` is useful when the same provider configuration is shared across different agents or deployment contexts that should not share state:
 
 ```python
 from agent_framework import Agent, TodoFileStore, TodoProvider
 from agent_framework.openai import OpenAIChatClient
 
-
-backlog_store = TodoFileStore(base_path="./todos", owner_state_key="user_id", kind="backlog")
-sprint_store = TodoFileStore(base_path="./todos", owner_state_key="user_id", kind="sprint")
+# User-scoped store: each user gets an isolated todo bucket.
+store = TodoFileStore(base_path="./todos", owner_state_key="user_id")
 
 agent = Agent(
     client=OpenAIChatClient(),
-    instructions=(
-        "You maintain two task lists: a sprint list for this week's work "
-        "and a backlog for future items."
-    ),
-    context_providers=[
-        TodoProvider(source_id="sprint", store=sprint_store),
-        TodoProvider(source_id="backlog", store=backlog_store),
-    ],
+    instructions="You are a planning assistant.",
+    context_providers=[TodoProvider(store=store)],
 )
 ```
 
-Tool names (`add_todos`, `complete_todos`, etc.) are the same regardless of `source_id`. The `source_id` controls only storage isolation — each value gets its own separate state bucket on disk, so `"sprint"` and `"backlog"` never share data even though their tools share the same names.
+To give an agent conceptually separate lists (e.g., sprint vs. backlog), use custom instructions and a single provider — let the agent model the distinction in task titles or descriptions rather than through separate tool registrations.
 
 ## Custom instructions
 

@@ -275,7 +275,7 @@ Delete the owner's memory root to start fresh, or copy the directory to migrate 
 import shutil
 from agent_framework import AgentSession, MemoryFileStore
 
-async def reset_user_memory(user_id: str, base_path: str = "./memory") -> None:
+def reset_user_memory(user_id: str, base_path: str = "./memory") -> None:
     """Delete all memory for one user — irreversible."""
     store = MemoryFileStore(base_path=base_path, owner_state_key="user_id")
     # Build a throwaway session so the store can resolve the correct

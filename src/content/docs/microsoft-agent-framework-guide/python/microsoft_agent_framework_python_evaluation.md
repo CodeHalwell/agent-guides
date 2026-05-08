@@ -256,15 +256,7 @@ This is the right approach when you want to check quality at each step of an ass
 
 ```python
 import asyncio
-from agent_framework import (
-    Agent,
-    EvalItem,
-    LocalEvaluator,
-    Message,
-    evaluate_agent,
-    keyword_check,
-    tool_called_check,
-)
+from agent_framework import Agent, EvalItem, LocalEvaluator, keyword_check
 from agent_framework.openai import OpenAIChatClient
 
 

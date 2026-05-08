@@ -158,7 +158,7 @@ from agent_framework import RunContext, workflow
 | `await ctx.add_event(WorkflowEvent(...))` | Emit a custom event into the run stream |
 | `ctx.get_state(key, default)` | Read workflow-scoped key/value state |
 | `ctx.set_state(key, value)` | Write workflow-scoped key/value state |
-| `ctx.is_streaming` | `True` when the caller used `run(..., stream=True)` |
+| `ctx.is_streaming()` | Returns `True` when the caller used `run(..., stream=True)` |
 
 ### Human-in-the-loop with `request_info`
 
