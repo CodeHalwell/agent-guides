@@ -1597,6 +1597,13 @@ class MyMemoryStore(MemoryStore):
 
 ---
 
+## Revision history
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.3.0 | May 9, 2026 | Core bumped 1.2.2 → 1.3.0. `agent-framework-foundry` and `agent-framework-openai` promoted to stable 1.3.0. `MemoryStore` and `SkillResource` now emit `ExperimentalWarning` on import. Version strings updated throughout; `Agent` and `FoundryChatClient` verified against installed `agent-framework==1.3.0` (`.routine-envs/check-0509-py`). |
+| 1.2.2 | May 2026 | Guide verified against `agent-framework-core==1.2.2`; skills, functional workflows, and `Agent.as_tool()` added. |
+
 ## Where to go next
 
 | Topic | Page |
