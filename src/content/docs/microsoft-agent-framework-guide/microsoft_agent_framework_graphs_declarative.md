@@ -23,7 +23,7 @@ pip install agent-framework
 
 The workflow types are exported from the top-level `agent_framework` package.
 
-### Primitives (verified against `agent-framework-core==1.2.2`)
+### Primitives (verified against `agent-framework-core==1.3.0`)
 
 | Class / function | Purpose |
 |---|---|
