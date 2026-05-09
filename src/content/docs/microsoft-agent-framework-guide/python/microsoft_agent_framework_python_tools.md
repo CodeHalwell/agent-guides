@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Agent Framework (Python) — Tools"
-description: "The @tool decorator, FunctionTool class, approval gates, explicit schemas, runtime context, invocation limits, and result parsers. All verified against agent-framework-core 1.2.2."
+description: "The @tool decorator, FunctionTool class, approval gates, explicit schemas, runtime context, invocation limits, as_tool() / as_mcp_server() composition, and result parsers. All verified against agent-framework-core 1.3.0."
 framework: microsoft-agent-framework
 language: python
 ---
@@ -11,7 +11,7 @@ Tools are how agents call back into your code. Agent Framework offers two ways t
 
 This page covers first-party function tools. For MCP tools see the [MCP page](./microsoft_agent_framework_python_mcp/); for skill-based tools see the [Skills page](./microsoft_agent_framework_python_skills/).
 
-Verified against `agent-framework-core==1.2.2` (`agent_framework._tools`).
+Verified against `agent-framework-core==1.3.0` (`agent_framework._tools`).
 
 ## Minimal `@tool`
 
@@ -203,7 +203,7 @@ def run_query(sql: str) -> list[dict]:
 `max_invocations` caps the **lifetime** of a tool instance. For module-level tools in long-running servers, either:
 
 - Reset explicitly: `get_weather.invocation_count = 0`
-- Use per-request limits instead: pass `FunctionInvocationConfiguration(max_function_calls=3)` to `agent.run(...)`.
+- Use per-request limits instead: set `client.function_invocation_configuration["max_function_calls"] = 3` at the client level (see [Per-request tool-loop caps](#per-request-tool-loop-caps) below).
 
 `max_invocation_exceptions` puts a ceiling on how many times a tool can error before the agent stops calling it — a simple circuit breaker.
 
@@ -232,36 +232,35 @@ Combine with `max_invocations=N` to cap **per-process** spend on expensive tools
 
 ### Per-request tool-loop caps
 
-`FunctionInvocationConfiguration` is the authoritative knob for runaway tool calls on a single `agent.run(...)`. Two levers that work together:
-
-- `max_iterations` caps the number of **model roundtrips** in the tool loop. Each roundtrip may contain several parallel tool calls, so this alone does not bound total executions.
-- `max_function_calls` caps the **total number of tool executions** across all iterations. This is the primary cost guard.
+`FunctionInvocationConfiguration` is a `TypedDict` that configures the tool execution loop. Apply it at the **chat-client level** to set defaults for every run on that client, or override per-agent with `default_options`:
 
 ```python
-from agent_framework import FunctionInvocationConfiguration
-
-config: FunctionInvocationConfiguration = {
-    "max_iterations": 5,
-    "max_function_calls": 20,
-    "max_consecutive_errors_per_request": 3,
-    "terminate_on_unknown_calls": True,
-    "include_detailed_errors": False,        # avoid leaking stack traces to the model
-}
-
-await agent.run(
-    "Research the order pipeline",
-    function_invocation_configuration=config,
-)
-```
-
-Applied at the chat-client level, the same settings act as a default for every run:
-
-```python
+from agent_framework import Agent
 from agent_framework.openai import OpenAIChatClient
 
+# Configure at the client level — applies to every agent using this client
 client = OpenAIChatClient()
+client.function_invocation_configuration["max_iterations"] = 5
 client.function_invocation_configuration["max_function_calls"] = 20
+client.function_invocation_configuration["max_consecutive_errors_per_request"] = 3
+client.function_invocation_configuration["terminate_on_unknown_calls"] = True
+client.function_invocation_configuration["include_detailed_errors"] = False
+
+agent = Agent(client=client, instructions="You are a research assistant.")
+await agent.run("Research the order pipeline")
 ```
+
+All `FunctionInvocationConfiguration` keys (all optional):
+
+| Key | Effect | Default |
+|---|---|---|
+| `enabled` | Master switch for the tool loop | `True` |
+| `max_iterations` | Max LLM roundtrips per request | `100` |
+| `max_function_calls` | Max total tool executions per request | `None` (unlimited) |
+| `max_consecutive_errors_per_request` | Halt after N consecutive tool errors | framework default |
+| `terminate_on_unknown_calls` | Raise if model calls an unregistered tool | `False` |
+| `include_detailed_errors` | Include stack traces in tool error messages sent to model | `False` |
+| `additional_tools` | Extra tools available but not advertised to the model | `[]` |
 
 `max_function_calls` is a **best-effort** limit — it's checked *after* each batch of parallel calls completes. A single iteration that emits 20 parallel calls will run all 20 even if the limit is 10; the next iteration then bails out. Combine with `max_iterations` to bound worst-case wall time.
 

@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Agent Framework Python - Comprehensive Technical Guide"
-description: "Comprehensive technical guide for the Microsoft Agent Framework on Python. Verified against agent-framework 1.3.0 — chat clients, tools, sessions, middleware, MCP, skills, workflows, evaluation, and observability."
+description: "Comprehensive technical guide for the Microsoft Agent Framework on Python. Verified against agent-framework 1.3.0 — chat clients, tools, sessions, middleware, MCP, skills, workflows, long-term memory, evaluation, and observability."
 framework: microsoft-agent-framework
 language: python
 ---
@@ -17,11 +17,12 @@ Latest verified release: 1.3.0 | Python 3.10+
 > **API reference (verified against `agent-framework-core==1.3.0`).**
 >
 > - **Package name / import root:** `agent_framework` (underscores). Install with `pip install agent-framework`.
-> - **Primary agent class:** `Agent`. Construct with `Agent(client=<ChatClient>, instructions=..., tools=[...])`.
+> - **Agent classes:** `Agent` (full stack with middleware + telemetry), `RawAgent` (same interface, skips the middleware/telemetry wrappers for latency-sensitive paths), `BaseAgent` (abstract base for custom subclasses).
 > - **Chat clients:** `agent_framework.foundry.FoundryChatClient`, `agent_framework.openai.OpenAIChatClient`, `agent_framework.anthropic.AnthropicClient`, plus Bedrock / Ollama in the `1.0.0b` provider line.
 > - **Tool decorator:** `@tool` from `agent_framework`.
 > - **Multi-turn state:** `session = agent.create_session()`, then `await agent.run(prompt, session=session)`.
-> - **Workflows:** `WorkflowBuilder` (with `.add_edge` / `.add_fan_in_edges` / `.add_fan_out_edges`) from `agent_framework`.
+> - **Workflows:** `WorkflowBuilder` (with `.add_edge` / `.add_fan_in_edges` / `.add_fan_out_edges` / `.add_chain` / `.add_multi_selection_edge_group`) and the experimental `@workflow` / `@step` functional API from `agent_framework`.
+> - **Long-term memory (experimental):** `MemoryStore` + `MemoryContextProvider` from `agent_framework`.
 > - **Declarative YAML agents (beta):** `AgentFactory` / `WorkflowFactory` from `agent_framework.declarative`.
 
 ---
@@ -176,14 +177,43 @@ if __name__ == "__main__":
 
 ## Simple Agents
 
-### The single `Agent` class
+### Agent types — `Agent`, `RawAgent`, and `BaseAgent`
 
-Unlike the .NET API (which distinguishes `AIAgent` as the stateless base class and `ChatClientAgent` as the concrete stateful implementation), the Python package ships a single `Agent` class in `agent_framework` that covers both scenarios. How it behaves is driven by how you invoke it:
+The Python package ships three agent types in `agent_framework`:
+
+| Class | When to use |
+|---|---|
+| `Agent` | Default — full middleware + telemetry stack. Use for all production agents. |
+| `RawAgent` | Same `__init__` and `run()` signature as `Agent`, but skips the middleware and telemetry layers. For latency-sensitive inner loops, test harnesses, and scenarios where you control the full pipeline yourself. |
+| `BaseAgent` | Abstract base class for custom agent subclasses. Provides the minimal interface without the built-in layers. |
+
+Both `Agent` and `RawAgent` behave the same way based on how you invoke them:
 
 - **Stateless / single-turn** — call `await agent.run(prompt)` without a session. Each call is independent; no conversation history persists.
-- **Stateful / multi-turn** — attach a session (`session = agent.create_session()`) and pass it to each `agent.run(prompt, session=session)` call. The session's `ChatHistoryProvider` (in-memory by default) accumulates turns so follow-ups have context.
+- **Stateful / multi-turn** — attach a session (`session = agent.create_session()`) and pass it to each `agent.run(prompt, session=session)` call. The session's history provider (in-memory by default) accumulates turns so follow-ups have context.
 
-For low-level subclassing, inherit from `BaseAgent` (`from agent_framework import BaseAgent`) which provides the minimal surface without the middleware and telemetry layers that `Agent` adds on top.
+```python
+import asyncio
+from agent_framework import Agent, RawAgent
+from agent_framework.openai import OpenAIChatClient
+
+client = OpenAIChatClient()
+
+# Standard agent — middleware and telemetry included
+agent = Agent(client=client, instructions="You are a helpful assistant.")
+
+# Raw agent — same API, thinner stack (no middleware, no OTel)
+raw_agent = RawAgent(client=client, instructions="You are a low-latency classifier.")
+
+async def main() -> None:
+    response = await agent.run("Explain async/await in Python.")
+    print(response.text)
+
+    label = await raw_agent.run("Classify: 'I need a refund' → billing|tech|other")
+    print(label.text)
+
+asyncio.run(main())
+```
 
 ### Creating an `Agent`
 
@@ -1409,6 +1439,152 @@ Same pattern works for `SupportsAgentRun`, `SupportsChatGetResponse`, and `Suppo
 
 ---
 
+## Long-Term Memory — `MemoryStore` and `MemoryContextProvider`
+
+> **Experimental.** `MemoryStore` and `MemoryContextProvider` are marked `ExperimentalFeature` in 1.3.0. The API is functional but may change between minor releases.
+
+The memory system gives agents durable, cross-session recall. It works in two phases:
+
+1. **Extraction** — after each session, an LLM extracts "durable facts" (preferences, decisions, patterns) from the conversation transcript.
+2. **Injection** — at the start of each future session, the most relevant topics are loaded into the system prompt automatically.
+
+The agent never "remembers" by keeping messages forever; instead it builds a compact, topic-indexed knowledge base that stays small regardless of conversation volume.
+
+### Quickstart with `MemoryFileStore`
+
+```python
+import asyncio
+from datetime import timedelta
+from agent_framework import Agent, MemoryContextProvider, MemoryFileStore
+from agent_framework.openai import OpenAIChatClient
+
+client = OpenAIChatClient()
+
+# File-based store — one directory per user
+store = MemoryFileStore(base_path="./memory")
+
+memory = MemoryContextProvider(
+    store=store,
+    source_id="memory",           # identifies this provider's data within the store
+    recent_turns=2,               # inject the last N turns as additional context
+    selection_limit=3,            # load at most 3 topic files per session
+    max_extractions=5,            # extract at most 5 memories per session
+    consolidation_interval=timedelta(hours=24),  # consolidate topics once per day
+    consolidation_min_sessions=5, # don't consolidate until at least 5 sessions exist
+    consolidation_client=client,  # LLM used for consolidation (defaults to same as agent)
+)
+
+agent = Agent(
+    client=client,
+    instructions="You are a helpful personal assistant with long-term memory.",
+    context_providers=[memory],
+)
+
+
+async def main() -> None:
+    # Session 1 — store a preference
+    session1 = agent.create_session(session_id="user-42-s1")
+    await agent.run("I prefer concise bullet-point answers over long paragraphs.", session=session1)
+
+    # Session 2 — the memory provider injects the extracted preference automatically
+    session2 = agent.create_session(session_id="user-42-s2")
+    response = await agent.run("Summarise the benefits of asyncio.", session=session2)
+    print(response.text)  # Likely uses bullet points — remembered from session 1
+
+
+asyncio.run(main())
+```
+
+### `MemoryContextProvider` constructor reference
+
+```python
+MemoryContextProvider(
+    store: MemoryStore,                     # storage backend (MemoryFileStore, custom)
+    *,
+    source_id: str = "memory",             # partition key within the store
+    recent_turns: int = 0,                 # inject last N conversation turns as context
+    load_tool_turns: bool = True,          # include tool-call turns when loading recent
+    context_prompt: str | None = None,     # override the default "## Memory" header
+    selection_limit: int = 3,             # max topic files loaded per session
+    max_extractions: int = 5,             # max memories extracted per session
+    consolidation_interval: timedelta = timedelta(hours=24),
+    consolidation_min_sessions: int = 5,
+    extraction_prompt: str | None = None,  # override LLM extraction prompt
+    consolidation_prompt: str | None = None,
+    consolidation_client: SupportsChatGetResponse | None = None,
+    history_message_filter: Callable | None = None,
+    history_dumps: JsonDumps | None = None,
+    history_loads: JsonLoads | None = None,
+)
+```
+
+### How the index works
+
+`MemoryFileStore` organises data under `base_path` as:
+
+```
+memory/
+└── <owner_id>/           # derived from session_id or set explicitly
+    ├── MEMORY.md         # index: one line per topic with a summary
+    ├── topics/
+    │   ├── communication-style.md
+    │   ├── tech-preferences.md
+    │   └── ...
+    ├── transcripts/      # raw session transcripts for extraction
+    └── state.json        # metadata (last extraction timestamp, etc.)
+```
+
+At session start the provider reads `MEMORY.md`, selects the `selection_limit` most relevant topics (currently all, with future semantic ranking), and injects them into the system prompt. The injection is cheap — only the compact index and selected topic bodies are included.
+
+### Inspecting and managing the store
+
+```python
+import asyncio
+from agent_framework import AgentSession, MemoryFileStore
+
+store = MemoryFileStore(base_path="./memory")
+session = AgentSession(session_id="user-42-s1")
+
+
+async def inspect_memory() -> None:
+    # List all extracted topics
+    topics = await store.list_topics(session, source_id="memory")
+    for t in topics:
+        print(f"{t.name}: {t.summary}")
+
+    # Read a specific topic
+    record = await store.get_topic(session, source_id="memory", topic="communication-style")
+    print(record.content)
+
+    # Delete a topic the user wants forgotten
+    await store.delete_topic(session, source_id="memory", topic="communication-style")
+
+    # Rebuild the index after manual edits
+    entries = await store.rebuild_index(session, source_id="memory", line_limit=200, line_length=150)
+
+
+asyncio.run(inspect_memory())
+```
+
+### Custom `MemoryStore` backend
+
+Implement the `MemoryStore` abstract class (12 methods) to use any durable backend — database, blob storage, vector DB:
+
+```python
+from agent_framework import MemoryStore
+
+class MyMemoryStore(MemoryStore):
+    async def get_topic(self, session, *, source_id, topic): ...
+    async def write_topic(self, session, record, *, source_id): ...
+    async def delete_topic(self, session, *, source_id, topic): ...
+    async def list_topics(self, session, *, source_id): ...
+    async def read_state(self, session, *, source_id): ...
+    async def write_state(self, session, state, *, source_id): ...
+    # ... plus rebuild_index, get_index_text, search_transcripts, etc.
+```
+
+---
+
 ## Production Deployment Cheatsheet
 
 - **Pin sub-packages** rather than the umbrella meta-install — `pip install agent-framework-core agent-framework-openai agent-framework-orchestrations` keeps the dependency tree tight.
@@ -1440,4 +1616,5 @@ Same pattern works for `SupportsAgentRun`, `SupportsChatGetResponse`, and `Suppo
 | OpenTelemetry traces / metrics / Azure Monitor | [Observability](./microsoft_agent_framework_python_observability/) |
 | MCPStdio / HTTP / WebSocket transports | [MCP](./microsoft_agent_framework_python_mcp/) |
 | Skills (progressive-disclosure knowledge) | [Skills](./microsoft_agent_framework_python_skills/) |
+| Long-term memory (`MemoryStore`, `MemoryContextProvider`) | See "Long-Term Memory" section above |
 | BaseChatClient / BaseEmbeddingClient / ContextProvider extension points | [Advanced Patterns](./microsoft_agent_framework_python_advanced/) |
