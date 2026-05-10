@@ -29,18 +29,16 @@ Semantic Kernel: 1.41.3+
 9. [Memory Systems](#9-memory-systems)
 10. [Vector Store v1.34 (2025)](#10-vector-store-v134-2025)
 11. [Embeddings & Semantic Search](#11-embeddings--semantic-search)
-12. [Sequential Planner](#12-sequential-planner)
-13. [Stepwise Planner](#13-stepwise-planner)
-14. [Action Planner](#14-action-planner)
-15. [Model Context Protocol (MCP) - 2025](#15-model-context-protocol-mcp---2025)
-16. [MCP Client Implementation](#16-mcp-client-implementation)
-17. [MCP Server Creation](#17-mcp-server-creation)
-18. [Google A2A Protocol Integration - 2025](#18-google-a2a-protocol-integration---2025)
-19. [Microsoft Agent Framework Integration - 2025](#19-microsoft-agent-framework-integration---2025)
-20. [Structured Output & Validation](#20-structured-output--validation)
-21. [Error Handling & Resilience](#21-error-handling--resilience)
-22. [Observability & Telemetry](#22-observability--telemetry)
-23. [Best Practices & Patterns](#23-best-practices--patterns)
+12. [Planning via Automatic Function Calling](#12-planning-via-automatic-function-calling)
+13. [Model Context Protocol (MCP) - 2025](#13-model-context-protocol-mcp---2025)
+14. [MCP Client Implementation](#14-mcp-client-implementation)
+15. [MCP Server Creation](#15-mcp-server-creation)
+16. [Google A2A Protocol Integration - 2025](#16-google-a2a-protocol-integration---2025)
+17. [Microsoft Agent Framework Integration - 2026](#17-microsoft-agent-framework-integration---2026)
+18. [Structured Output & Validation](#18-structured-output--validation)
+19. [Error Handling & Resilience](#19-error-handling--resilience)
+20. [Observability & Telemetry](#20-observability--telemetry)
+21. [Best Practices & Patterns](#21-best-practices--patterns)
 
 ---
 
@@ -924,10 +922,7 @@ import asyncio
 from semantic_kernel import Kernel
 from semantic_kernel.functions import kernel_function
 from semantic_kernel.agents import ChatCompletionAgent
-from semantic_kernel.connectors.ai.open_ai import (
-    OpenAIChatCompletion,
-    OpenAIChatPromptExecutionSettings,
-)
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
 from semantic_kernel.contents import ChatHistory
 
@@ -947,14 +942,11 @@ async def main():
     kernel.add_plugin(EmailPlugin(), "Email")
     kernel.add_plugin(WeatherPlugin(), "Weather")
 
-    settings = OpenAIChatPromptExecutionSettings(
-        function_choice_behavior=FunctionChoiceBehavior.Auto()
-    )
     agent = ChatCompletionAgent(
         kernel=kernel,
         name="Planner",
         instructions="Accomplish the user's goal by calling the available functions in the right order.",
-        execution_settings=settings,
+        function_choice_behavior=FunctionChoiceBehavior.Auto(),
     )
 
     chat = ChatHistory()
@@ -973,10 +965,7 @@ import asyncio
 from semantic_kernel import Kernel
 from semantic_kernel.functions import kernel_function
 from semantic_kernel.agents import ChatCompletionAgent
-from semantic_kernel.connectors.ai.open_ai import (
-    OpenAIChatCompletion,
-    OpenAIChatPromptExecutionSettings,
-)
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
 from semantic_kernel.contents import ChatHistory
 
@@ -994,14 +983,11 @@ async def run_research_agent():
     kernel.add_service(OpenAIChatCompletion(ai_model_id="gpt-4o"))
     kernel.add_plugin(ResearchPlugin(), "Research")
 
-    settings = OpenAIChatPromptExecutionSettings(
-        function_choice_behavior=FunctionChoiceBehavior.Auto()
-    )
     agent = ChatCompletionAgent(
         kernel=kernel,
         name="ResearchAgent",
         instructions="Research the topic thoroughly and produce a structured summary.",
-        execution_settings=settings,
+        function_choice_behavior=FunctionChoiceBehavior.Auto(),
     )
 
     chat = ChatHistory()
@@ -1014,7 +1000,7 @@ asyncio.run(run_research_agent())
 
 ---
 
-## 15. Model Context Protocol (MCP) - 2025
+## 13. Model Context Protocol (MCP) - 2025
 
 ### MCP Overview
 
@@ -1044,7 +1030,7 @@ Model Context Protocol (MCP) is a standardized protocol for connecting AI applic
 
 ---
 
-## 16. MCP Client Implementation
+## 14. MCP Client Implementation
 
 ### Basic MCP Client
 
@@ -1150,7 +1136,7 @@ result = await kernel.invoke(function, document="Long text here...")
 
 ---
 
-## 17. MCP Server Creation
+## 15. MCP Server Creation
 
 ### Creating an MCP Server with SK
 
@@ -1360,7 +1346,7 @@ if __name__ == "__main__":
 
 ---
 
-## 18. Google A2A Protocol Integration - 2025
+## 16. Google A2A Protocol Integration - 2025
 
 ### A2A Overview
 
@@ -1569,7 +1555,7 @@ sk_agent = SkA2AAgent(
 
 ---
 
-## 19. Microsoft Agent Framework Integration - 2026
+## 17. Microsoft Agent Framework Integration - 2026
 
 ### Overview
 
@@ -1653,7 +1639,7 @@ result = await agent.run("Process sensitive customer data")
 
 ---
 
-## 20. Structured Output & Validation
+## 18. Structured Output & Validation
 
 ### Pydantic Models
 
@@ -1759,7 +1745,7 @@ customer = await get_structured_output(
 
 ---
 
-## 21. Error Handling & Resilience
+## 19. Error Handling & Resilience
 
 ### Retry with Tenacity
 
@@ -1874,7 +1860,7 @@ result = await invoke_with_timeout(
 
 ---
 
-## 22. Observability & Telemetry
+## 20. Observability & Telemetry
 
 ### OpenTelemetry Integration
 
@@ -2037,7 +2023,7 @@ except Exception as e:
 
 ---
 
-## 23. Best Practices & Patterns
+## 21. Best Practices & Patterns
 
 ### Async Best Practices
 
@@ -2224,12 +2210,12 @@ await server.start(port=9090)
 
 ## Revision History
 
-| Version | Date | Changes |
-|---------|------|---------|
+| Version | Date | Changes | Reviewer |
+|---------|------|---------|----------|
 | 1.41.3 | May 10, 2026 | Symbol verification against installed 1.41.3: fixed `KernelContext` removal (replaced with `KernelArguments` pattern); fixed `semantic_kernel.connectors.openapi` → `openapi_plugin` module rename; replaced removed `semantic_kernel.planners` sections (SequentialPlanner, StepwisePlanner, ActionPlanner) with modern `ChatCompletionAgent` + `FunctionChoiceBehavior.Auto()` approach; flagged `semantic_kernel.interop.a2a.A2AAdapter` as not yet present. All verified against `.routine-envs/semantic-kernel-0510` (Python 3.12.3). | Claude routine |
-| 1.41.3 | April 28, 2026 | Version bumped 1.41.2 → 1.41.3 (patch release); header and version references updated. PyPI confirms 1.41.3 as latest stable. |
-| 1.41.2 | April 8, 2026 | Full MCP server/client support; A2A protocol; Oracle database connector; Google GenAI SDK migration; Python 3.10+ required |
-| 1.38.0 | November 2025 | Previous documented version |
+| 1.41.3 | April 28, 2026 | Version bumped 1.41.2 → 1.41.3 (patch release); header and version references updated. PyPI confirms 1.41.3 as latest stable. | Claude routine |
+| 1.41.2 | April 8, 2026 | Full MCP server/client support; A2A protocol; Oracle database connector; Google GenAI SDK migration; Python 3.10+ required | Claude routine |
+| 1.38.0 | November 2025 | Previous documented version | — |
 
 ---
 
