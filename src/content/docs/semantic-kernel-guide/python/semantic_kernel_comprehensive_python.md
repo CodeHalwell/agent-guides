@@ -969,6 +969,7 @@ asyncio.run(main())
 ### Multi-Step Research Planning
 
 ```python
+import asyncio
 from semantic_kernel import Kernel
 from semantic_kernel.functions import kernel_function
 from semantic_kernel.agents import ChatCompletionAgent
@@ -1007,6 +1008,8 @@ async def run_research_agent():
     chat.add_user_message("Research the latest AI trends and create a summary report")
     async for message in agent.invoke(chat):
         print(message.content)
+
+asyncio.run(run_research_agent())
 ```
 
 ---
