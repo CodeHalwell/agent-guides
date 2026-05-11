@@ -1221,9 +1221,9 @@ A few facts that aren't obvious from the signature alone:
 
 ```python
 import asyncio
-import uvicorn
 from agent_framework import Agent, tool
 from agent_framework.openai import OpenAIChatClient
+from mcp.server.stdio import stdio_server
 
 
 @tool
@@ -1239,21 +1239,34 @@ inventory_agent = Agent(
     tools=[search_inventory],
 )
 
-# Create an MCP server from the agent.
-# The agent is exposed as a single MCP tool called "<server_name>_run" (default: "Agent_run").
+# as_mcp_server() returns mcp.server.lowlevel.Server — it is transport-agnostic.
+# Wire it to a transport by calling server.run(read_stream, write_stream, init_options).
 mcp_server = inventory_agent.as_mcp_server(
-    server_name="InventoryAgent",                   # prefix for the exposed tool name
+    server_name="InventoryAgent",
     version="1.0.0",
     instructions="Call this agent to query real-time inventory levels.",
 )
 
-# Mount it on any ASGI server — create_streamable_http_app() returns the app directly
-# Option 1 — bare uvicorn (production path)
-app = mcp_server.create_streamable_http_app()
-# uvicorn.run(app, host="0.0.0.0", port=8080)
+# Option 1 — stdio transport (CLI tools, VS Code extensions, local testing)
+async def run_stdio():
+    init_options = mcp_server.create_initialization_options()
+    async with stdio_server() as (read_stream, write_stream):
+        await mcp_server.run(read_stream, write_stream, init_options)
 
-# Option 2 — test it locally without a network by calling the MCP client directly
-asyncio.run(mcp_server.run_stdio_async())          # stdio transport for CLI tools / VS Code
+asyncio.run(run_stdio())
+
+# Option 2 — streamable HTTP transport (production)
+# from mcp.server.streamable_http import StreamableHTTPServerTransport
+# transport = StreamableHTTPServerTransport(mcp_session_id=None)
+# init_options = mcp_server.create_initialization_options()
+# async def run_http():
+#     async with transport.connect() as (read_stream, write_stream):
+#         await mcp_server.run(read_stream, write_stream, init_options)
+# # transport.handle_request is an ASGI callable — mount it in Starlette / FastAPI:
+# from starlette.applications import Starlette
+# from starlette.routing import Route
+# app = Starlette(routes=[Route("/mcp", transport.handle_request, methods=["GET", "POST"])])
+# # uvicorn.run(app, host="0.0.0.0", port=8080)
 ```
 
 Consuming the published agent from another agent in the same or a different process:

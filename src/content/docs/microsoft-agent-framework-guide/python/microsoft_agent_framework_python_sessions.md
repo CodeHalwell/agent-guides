@@ -518,7 +518,7 @@ class TenantContextProvider(ContextProvider):
         # Inject a context message (appears before the user's message in the model's view)
         persona = await self._fetch_persona(tenant_id)
         context.extend_messages(
-            self,                            # pass self so attribution records the class name
+            self.source_id,
             [Message(role="system", contents=[Content.from_text(persona)])],
         )
 
@@ -613,11 +613,11 @@ agent = Agent(
 
 ### Inspecting accumulated context
 
-Read back what all providers have contributed, useful for debugging or audit logging:
+Read back what all providers have contributed, useful for debugging or audit logging. `SessionContext.instructions`, `SessionContext.tools`, and `SessionContext.context_messages` are documented public attributes — not implementation details — and are safe to read in any provider's `after_run`:
 
 ```python
 async def debug_context(agent, session):
-    """Log every context message and instruction before the model call."""
+    """Log every context message and instruction after the model run completes."""
     from agent_framework import ContextProvider, SessionContext, AgentSession
     from typing import Any
 

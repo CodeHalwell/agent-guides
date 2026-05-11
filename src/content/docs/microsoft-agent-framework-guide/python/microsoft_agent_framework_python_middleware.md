@@ -548,6 +548,7 @@ The three hooks on `AgentContext` behave exactly like their `ChatContext` equiva
 | `stream_cleanup_hooks` | Once, after the stream is fully consumed | Nothing — `() -> None` or `() -> Awaitable[None]` |
 
 ```python
+import asyncio
 import logging
 import time
 from agent_framework import (
@@ -614,12 +615,17 @@ agent = Agent(
     middleware=[AgentStreamingInstrumentor()],
 )
 
-# The hooks only activate for streaming runs:
-stream = agent.run("Explain transformer attention in 3 paragraphs.", stream=True)
-async for update in stream:
-    if update.text:
-        print(update.text, end="", flush=True)
-# AgentStreamingInstrumentor logs elapsed_ms and output_words once here.
+
+async def main():
+    # The hooks only activate for streaming runs:
+    stream = agent.run("Explain transformer attention in 3 paragraphs.", stream=True)
+    async for update in stream:
+        if update.text:
+            print(update.text, end="", flush=True)
+    # AgentStreamingInstrumentor logs elapsed_ms and output_words once here.
+
+
+asyncio.run(main())
 ```
 
 Key difference from `ChatContext` hooks: if the agent makes 3 tool calls and 4 LLM roundtrips to answer your question, `ChatContext.stream_transform_hooks` would fire for every token from every one of those 4 model calls. `AgentContext.stream_transform_hooks` fires for every token in the **outer** `ResponseStream` that the caller iterates — typically the same tokens, but scoped to one accounting boundary instead of four.

@@ -864,6 +864,7 @@ asyncio.run(main())
 When you want to send evaluation items to a cloud provider (such as Microsoft Foundry) that expects OpenAI-style message dicts, `AgentEvalConverter` handles the type conversion from agent-framework's `Message` / `Content` / `FunctionTool` types. All methods are static:
 
 ```python
+import asyncio
 from agent_framework import (
     AgentEvalConverter,
     Content,
@@ -911,14 +912,17 @@ tool_defs = AgentEvalConverter.extract_tools(agent)
 # [{"type": "function", "function": {"name": "lookup_order", "description": "...", "parameters": {...}}}]
 
 # Convert an agent response directly to an EvalItem for offline scoring
-response = await agent.run("Where is order #99?")
-item = AgentEvalConverter.to_eval_item(
-    query="Where is order #99?",
-    response=response,
-    agent=agent,
-    context="Order management assistant",
-)
-print(item.query, "→", item.response)
+async def main():
+    response = await agent.run("Where is order #99?")
+    item = AgentEvalConverter.to_eval_item(
+        query="Where is order #99?",
+        response=response,
+        agent=agent,
+        context="Order management assistant",
+    )
+    print(item.query, "→", item.response)
+
+asyncio.run(main())
 ```
 
 `AgentEvalConverter.to_eval_item` is the fastest path from a live `AgentResponse` to an `EvalItem` you can feed to any evaluator — including cloud providers that need the Foundry message format:
