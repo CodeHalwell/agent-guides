@@ -337,13 +337,15 @@ print(request_user_location.declaration_only)   # True
 Use this from middleware to block accidental invocation of client-side tools:
 
 ```python
+from collections.abc import Awaitable, Callable
+
 from agent_framework import FunctionMiddleware, FunctionInvocationContext, ToolException
 
 
 class ClientSideOnlyGuard(FunctionMiddleware):
     """Raise before the framework tries to invoke a declaration-only tool."""
 
-    async def process(self, context: FunctionInvocationContext, call_next) -> None:
+    async def process(self, context: FunctionInvocationContext, call_next: Callable[[], Awaitable[None]]) -> None:
         if context.function.declaration_only:
             raise ToolException(
                 f"Tool '{context.function.name}' is declaration-only. "

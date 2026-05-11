@@ -553,7 +553,7 @@ from agent_framework.anthropic import AnthropicClient, AnthropicChatOptions
 
 # Anthropic
 claude_agent: Agent[AnthropicChatOptions] = Agent(
-    client=AnthropicClient(model="claude-sonnet-4-6"),
+    client=AnthropicClient(model="claude-sonnet-4-5"),
     default_options=AnthropicChatOptions(max_tokens=8192),
 )
 ```
