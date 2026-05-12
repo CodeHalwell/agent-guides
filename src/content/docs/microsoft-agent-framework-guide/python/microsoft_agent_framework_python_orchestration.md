@@ -110,7 +110,7 @@ from agent_framework import AgentExecutorResponse
 
 def join_as_bullets(responses: list[AgentExecutorResponse]) -> str:
     return "\n".join(
-        f"- ({r.executor_id}) {r.agent_run_response.messages[-1].text}" for r in responses
+        f"- ({r.executor_id}) {r.agent_response.text}" for r in responses
     )
 
 workflow = (
@@ -437,30 +437,154 @@ The downstream `AgentExecutor` now sees the translation as the assistant turn, w
 
 ### Manual routing with edges
 
-`WorkflowBuilder` exposes helper methods for the common edge shapes — the packaged builders use them internally:
+`WorkflowBuilder` exposes helper methods for every edge shape — the packaged builders use these internally. All edge methods accept bare `SupportsAgentRun` instances (agents) as well as `Executor` instances; the builder wraps agents in `AgentExecutor` automatically.
+
+#### Fan-out / fan-in (parallel execution)
 
 ```python
-from agent_framework import Case, Default, WorkflowBuilder
+from agent_framework import WorkflowBuilder
 
 # Fan out to three reviewers, fan in to a merger.
-builder = WorkflowBuilder(start_executor=router)
-builder.add_fan_out_edges(router, [reviewer_a, reviewer_b, reviewer_c])
-builder.add_fan_in_edges([reviewer_a, reviewer_b, reviewer_c], merger)
+workflow = (
+    WorkflowBuilder(start_executor=router)
+    .add_fan_out_edges(router, [reviewer_a, reviewer_b, reviewer_c])
+    .add_fan_in_edges([reviewer_a, reviewer_b, reviewer_c], merger)
+    .build()
+)
+```
 
-# Switch on the router's output — each Case is a condition + target pair.
-builder.add_switch_case_edge_group(
-    source=triage,
-    cases=[
-        Case(condition=lambda msg: msg.category == "billing", target=billing_agent),
-        Case(condition=lambda msg: msg.category == "technical", target=technical_agent),
-        Default(target=general_agent),
-    ],
+Each reviewer receives the router's output concurrently. `merger` receives `list[AgentExecutorResponse]` — one entry per reviewer — only after all three complete.
+
+#### Switch-case routing
+
+Route a message to exactly one branch based on conditions evaluated in order. Use `Case` for conditions and `Default` as the fallback:
+
+```python
+from dataclasses import dataclass
+from agent_framework import (
+    Agent,
+    Case,
+    Default,
+    Executor,
+    WorkflowBuilder,
+    WorkflowContext,
+    handler,
+)
+from agent_framework.openai import OpenAIChatClient
+
+
+@dataclass
+class SupportTicket:
+    category: str
+    text: str
+
+
+class TriageExecutor(Executor):
+    """Classify incoming text into a SupportTicket."""
+
+    @handler
+    async def classify(self, text: str, ctx: WorkflowContext[SupportTicket]) -> None:
+        category = "billing" if "invoice" in text.lower() else "technical"
+        await ctx.send_message(SupportTicket(category=category, text=text))
+
+
+client = OpenAIChatClient()
+triage = TriageExecutor(id="triage")
+billing_agent = Agent(client=client, name="billing", instructions="You resolve billing questions.")
+technical_agent = Agent(client=client, name="technical", instructions="You resolve technical questions.")
+general_agent = Agent(client=client, name="general", instructions="You handle general inquiries.")
+
+workflow = (
+    WorkflowBuilder(start_executor=triage)
+    .add_switch_case_edge_group(
+        source=triage,
+        cases=[
+            Case(condition=lambda msg: msg.category == "billing",   target=billing_agent),
+            Case(condition=lambda msg: msg.category == "technical", target=technical_agent),
+            Default(target=general_agent),
+        ],
+    )
+    .build()
 )
 
-# Also available:
-#   .add_chain([a, b, c])               — A → B → C shorthand
-#   .add_edge(a, b, condition=lambda m: ...)   — conditional single edge
-#   .add_multi_selection_edge_group(...)       — fan-out with a picker
+result = await workflow.run("I was charged twice on my last invoice.")
+print(result.get_outputs()[-1].text)
+```
+
+Conditions are evaluated in declaration order; the first `Case` whose condition returns `True` wins. The `Default` case matches everything that falls through. Exactly one branch executes.
+
+#### Multi-selection edge group
+
+A `selection_func` receives the outgoing message and the list of candidate executor IDs, and returns the subset that should receive it. Unlike switch-case (exactly one branch), multi-selection can send to any number of targets — including all or none.
+
+```python
+from dataclasses import dataclass
+from agent_framework import (
+    Agent,
+    AgentExecutor,
+    Executor,
+    WorkflowBuilder,
+    WorkflowContext,
+    handler,
+)
+
+
+@dataclass
+class AnalysisTask:
+    priority: str   # "high" | "low"
+    text: str
+
+
+class Dispatcher(Executor):
+    @handler
+    async def dispatch(self, text: str, ctx: WorkflowContext[AnalysisTask]) -> None:
+        priority = "high" if len(text) > 50 else "low"
+        await ctx.send_message(AnalysisTask(priority=priority, text=text))
+
+
+def route_by_priority(task: AnalysisTask, candidate_ids: list[str]) -> list[str]:
+    """High-priority tasks go to all workers; low-priority only to the fast worker."""
+    if task.priority == "high":
+        return candidate_ids                # all workers
+    return [cid for cid in candidate_ids if "fast" in cid]
+
+
+fast_agent = Agent(id="fast_agent", model="gpt-4o-mini", instructions="Answer concisely.")
+thorough_agent = Agent(id="thorough_agent", model="gpt-4o", instructions="Answer thoroughly.")
+
+dispatcher = Dispatcher(id="dispatcher")
+fast_worker = AgentExecutor(id="fast_worker", agent=fast_agent)
+thorough_worker = AgentExecutor(id="thorough_worker", agent=thorough_agent)
+
+workflow = (
+    WorkflowBuilder(start_executor=dispatcher)
+    .add_multi_selection_edge_group(
+        source=dispatcher,
+        targets=[fast_worker, thorough_worker],
+        selection_func=route_by_priority,
+    )
+    .build()
+)
+```
+
+The selection function is synchronous; the framework calls it once per outgoing message, before dispatching to the chosen subset. Return an empty list to drop the message entirely.
+
+#### Chain shorthand
+
+```python
+# A → B → C with a single call instead of three .add_edge calls
+workflow = WorkflowBuilder(start_executor=step_a).add_chain([step_a, step_b, step_c]).build()
+```
+
+#### Conditional single edge
+
+```python
+# Only route to reviewer if the planner flagged the result as draft
+workflow = (
+    WorkflowBuilder(start_executor=planner)
+    .add_edge(planner, reviewer, condition=lambda msg: getattr(msg, "is_draft", False))
+    .build()
+)
 ```
 
 ## Wrapping a workflow as an agent — `Workflow.as_agent`

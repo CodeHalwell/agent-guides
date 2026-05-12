@@ -251,46 +251,86 @@ The chat client owns the underlying HTTP session and credentials; when the clien
 
 ### Orchestration Patterns
 
--   **Sequential Workflow:** The output of one agent is passed as the input to the next.
--   **Router/Dispatcher:** A primary agent routes tasks to specialized agents based on the query.
--   **Group Chat:** Multiple agents collaborate in a shared conversation, moderated by a manager.
+`agent-framework-orchestrations` provides five high-level builders that cover the most common topologies. Each builder returns a standard `Workflow` object, so checkpointing, streaming, and HITL work uniformly across all patterns.
 
-### Example: Router Pattern
+| Pattern | Builder | When to use |
+|---|---|---|
+| Sequential | `SequentialBuilder` | Document pipeline — research → analyse → write |
+| Concurrent | `ConcurrentBuilder` | Parallel opinions aggregated once |
+| Handoff | `HandoffBuilder` | Support triage routed to specialists |
+| GroupChat | `GroupChatBuilder` | Moderated panel, LLM or code-driven speaker selection |
+| Magentic | `MagenticBuilder` | Open-ended research with replanning |
+
+### Example: Sequential pipeline
 
 ```python
 import asyncio
 from agent_framework import Agent
 from agent_framework.openai import OpenAIChatClient
+from agent_framework_orchestrations import SequentialBuilder
 
-class RouterWorkflow:
-    def __init__(self, client: OpenAIChatClient):
-        self._router = Agent(
-            client=client,
-            instructions="You are a router. Classify the user's query as 'Billing' or 'Technical'. Respond with only one of those words.",
-        )
-        self._billing_agent = Agent(
-            client=client,
-            instructions="You are a billing support expert.",
-        )
-        self._tech_agent = Agent(
-            client=client,
-            instructions="You are a technical support expert.",
-        )
+client = OpenAIChatClient()
 
-    async def handle_request(self, user_query: str) -> str:
-        route_response = await self._router.run(user_query)
-        route = route_response.text
+researcher = Agent(client=client, name="researcher",
+                   instructions="Return concise bullet-point facts on the topic.")
+analyst    = Agent(client=client, name="analyst",
+                   instructions="Synthesise the facts into an analysis.")
+writer     = Agent(client=client, name="writer",
+                   instructions="Write a polished one-paragraph summary.")
 
-        target_agent = self._billing_agent if "Billing" in route else self._tech_agent
+workflow = SequentialBuilder(participants=[researcher, analyst, writer]).build()
 
-        final_response = await target_agent.run(user_query)
-        return final_response.text
+async def main() -> None:
+    result = await workflow.run("Advances in post-quantum cryptography")
+    print(result.get_outputs()[-1].text)
 
-# --- Usage ---
-# workflow = RouterWorkflow(OpenAIChatClient())
-# response = await workflow.handle_request("I have a problem with my invoice.")
-# print(response)
+asyncio.run(main())
 ```
+
+### Example: Concurrent opinions
+
+```python
+from agent_framework_orchestrations import ConcurrentBuilder
+
+# All three agents receive the same prompt and run in parallel.
+# The default aggregator returns one assistant message per participant.
+workflow = ConcurrentBuilder(participants=[researcher, analyst, writer]).build()
+
+# Custom aggregator — join responses with a separator.
+async def stitch(results) -> str:
+    return "\n---\n".join(r.agent_response.text for r in results)
+
+workflow_custom = (
+    ConcurrentBuilder(participants=[researcher, analyst, writer])
+    .with_aggregator(stitch)
+    .build()
+)
+```
+
+### Example: Handoff routing
+
+```python
+from agent_framework_orchestrations import HandoffBuilder
+
+triage    = Agent(client=client, name="triage",
+                  instructions="Classify the request and hand off to billing or technical.")
+billing   = Agent(client=client, name="billing",
+                  instructions="Resolve billing questions.",
+                  description="Handles invoices, refunds, plan changes.")
+technical = Agent(client=client, name="technical",
+                  instructions="Resolve technical questions.",
+                  description="Handles bugs, API errors, outages.")
+
+workflow = (
+    HandoffBuilder(participants=[triage, billing, technical])
+    .add_handoff(triage, [billing, technical])
+    .build()
+)
+
+result = await workflow.run("My card was charged twice last month.")
+```
+
+For the full set of knobs — `with_request_info`, `with_autonomous_mode`, `enable_plan_review`, custom selection functions, etc. — see the [Multi-Agent Orchestration page](./microsoft_agent_framework_python_orchestration/).
 
 ---
 
@@ -1667,6 +1707,205 @@ class MyMemoryStore(MemoryStore):
     async def read_state(self, session, *, source_id): ...
     async def write_state(self, session, state, *, source_id): ...
     # ... plus rebuild_index, get_index_text, search_transcripts, etc.
+```
+
+---
+
+## Agent Todo List — `TodoProvider` (Experimental HARNESS)
+
+> **Experimental.** `TodoProvider` and its backing stores are `ExperimentalFeature.HARNESS` in 1.3.0.
+
+`TodoProvider` gives an agent a structured task list it can manage itself. The agent receives four tools — `add_todos`, `complete_todos`, `get_remaining_todos`, and `remove_todos` — and a default system-prompt injection that tells it how to use them. The provider stores state in the session (in-memory by default) or on disk via `TodoFileStore`.
+
+### Quickstart — in-session todos
+
+```python
+import asyncio
+from agent_framework import Agent, TodoProvider
+from agent_framework.openai import OpenAIChatClient
+
+agent = Agent(
+    client=OpenAIChatClient(),
+    instructions="You are a project-planning assistant.",
+    context_providers=[TodoProvider()],   # in-session store by default
+)
+
+async def main() -> None:
+    session = agent.create_session()
+
+    # The agent will break the task into todos, mark them complete as it works,
+    # and use get_remaining_todos to track progress across turns.
+    r = await agent.run(
+        "Plan a three-day product launch: marketing, engineering, and support tasks.",
+        session=session,
+    )
+    print(r.text)
+
+asyncio.run(main())
+```
+
+The agent sees instructions like "Break complex work into trackable items… Use add_todos… complete_todos… get_remaining_todos…". It manages the list autonomously — no application code needed to drive it.
+
+### Persisting todos to disk with `TodoFileStore`
+
+For todos that should survive process restarts or multi-session projects, swap in `TodoFileStore`:
+
+```python
+from agent_framework import Agent, TodoFileStore, TodoProvider
+from agent_framework.openai import OpenAIChatClient
+
+# One JSON file per session under ./todos/<session_id>/todos.json
+store = TodoFileStore(base_path="./todos")
+
+agent = Agent(
+    client=OpenAIChatClient(),
+    instructions="You are a long-running task assistant.",
+    context_providers=[TodoProvider(store=store)],
+)
+
+# Reuse the same session_id across runs to pick up where the agent left off.
+session = agent.create_session(session_id="project-launch-42")
+```
+
+`TodoFileStore` writes atomically and locks per-session to avoid concurrent corruption. Pass `owner_prefix=` when multiple agents share the same `base_path` so their stores don't collide.
+
+### `TodoProvider` constructor reference
+
+```python
+TodoProvider(
+    source_id="todo",          # key in session.state — change if you have multiple providers
+    *,
+    instructions=None,         # override the default system-prompt block
+    store=None,                # TodoStore subclass; defaults to TodoSessionStore (in-memory)
+)
+```
+
+The default `instructions` text explains all four tools in detail. Pass a custom string to tune the tone or restrict which tools the agent should use.
+
+### Inspecting todos from application code
+
+```python
+from agent_framework import AgentSession, TodoFileStore, TodoSessionStore
+
+# --- In-memory: read directly from session.state ---
+session = agent.create_session(session_id="s1")
+await agent.run("Plan the sprint.", session=session)
+
+in_mem_store = TodoSessionStore()
+items, _ = await in_mem_store.load_state(session, source_id="todo")
+for item in items:
+    print(f"[{'x' if item.is_complete else ' '}] {item.title}")
+
+# --- File-based: load from disk ---
+file_store = TodoFileStore(base_path="./todos")
+items, _ = await file_store.load_state(
+    AgentSession(session_id="project-launch-42"),
+    source_id="todo",
+)
+remaining = [i for i in items if not i.is_complete]
+print(f"{len(remaining)} tasks still pending")
+```
+
+---
+
+## Agent Mode Provider — `AgentModeProvider` (Experimental HARNESS)
+
+> **Experimental.** `AgentModeProvider`, `set_agent_mode`, and `get_agent_mode` are `ExperimentalFeature.HARNESS` in 1.3.0.
+
+`AgentModeProvider` lets an agent switch between named operating modes at runtime. Two modes ship out of the box — **plan** (interactive, ask questions) and **execute** (autonomous, minimise interruptions). You can define any set of modes and inject custom descriptions for each.
+
+The provider exposes `get_mode` and `set_mode` tools to the agent, and injects the current mode into the system prompt so the agent knows how to behave.
+
+### Quickstart — plan / execute cycle
+
+```python
+import asyncio
+from agent_framework import Agent, AgentModeProvider
+from agent_framework.openai import OpenAIChatClient
+
+agent = Agent(
+    client=OpenAIChatClient(),
+    instructions="You are a task-planning and execution assistant.",
+    context_providers=[AgentModeProvider()],  # default modes: "plan" and "execute"
+)
+
+async def main() -> None:
+    session = agent.create_session()
+
+    # Phase 1: planning — the agent should ask clarifying questions
+    await agent.run(
+        "I want to migrate our Postgres database to a new schema.",
+        session=session,
+    )
+
+    # Phase 2: switch to execute mode and let the agent work autonomously
+    await agent.run(
+        "Looks good. Switch to execute mode and start the migration.",
+        session=session,
+    )
+
+asyncio.run(main())
+```
+
+In **plan** mode the agent is encouraged to ask for clarification before acting. In **execute** mode it works autonomously and avoids unnecessary check-ins.
+
+### Custom modes
+
+Define your own mode names and descriptions when the defaults don't fit. Mode names come from the keys of `mode_descriptions`:
+
+```python
+from agent_framework import Agent, AgentModeProvider
+from agent_framework.openai import OpenAIChatClient
+
+agent = Agent(
+    client=OpenAIChatClient(),
+    instructions="You are a code-review assistant.",
+    context_providers=[
+        AgentModeProvider(
+            default_mode="review",
+            mode_descriptions={
+                "review":  "Read the diff and identify issues. Do not suggest fixes yet.",
+                "suggest": "For each issue, propose a concrete code fix.",
+                "approve": "All issues resolved. Write the approval comment and exit.",
+            },
+        )
+    ],
+)
+```
+
+### Reading and setting mode from application code
+
+```python
+from agent_framework import AgentSession, get_agent_mode, set_agent_mode
+
+session = AgentSession(session_id="review-pr-88")
+
+# Read the current mode (returns the default if not yet set).
+# available_modes must match what the provider was configured with.
+current = get_agent_mode(
+    session,
+    default_mode="review",
+    available_modes=["review", "suggest", "approve"],
+)
+print(current)   # "review"
+
+# Programmatically advance to the next stage
+set_agent_mode(session, "suggest", available_modes=["review", "suggest", "approve"])
+```
+
+Use `set_agent_mode` from your application layer when an external event (e.g. a CI gate passing) should trigger a mode transition, rather than relying on the agent to call `set_mode` itself.
+
+### `AgentModeProvider` constructor reference
+
+```python
+AgentModeProvider(
+    source_id="agent_mode",  # session.state partition key
+    *,
+    default_mode=None,       # starting mode; defaults to first key in mode_descriptions
+    mode_descriptions=None,  # Mapping[mode_name, description]; defaults to plan/execute
+    instructions=None,       # override the default system-prompt block (must contain
+                             # {available_modes} and {current_mode} placeholders)
+)
 ```
 
 ---

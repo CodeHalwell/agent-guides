@@ -1025,6 +1025,131 @@ if __name__ == "__main__":
 
 For custom types in `session.state`, register them once at module import via `register_state_type(...)` so cold-starts work even before the model is serialised. See the [sessions guide](./microsoft_agent_framework_python_sessions/) for the full contract.
 
+### Recipe 22 — Agent todo list with `TodoProvider` (Experimental)
+
+Give the agent a persistent task list. The provider exposes `add_todos`, `complete_todos`, `get_remaining_todos`, and `remove_todos` tools and injects usage instructions into the system prompt automatically.
+
+```python
+# todo_agent.py
+import asyncio
+from agent_framework import Agent, TodoFileStore, TodoProvider
+from agent_framework.openai import OpenAIChatClient
+
+
+async def main() -> None:
+    # TodoFileStore persists todos under ./todos/<session_id>/todos.json
+    store = TodoFileStore(base_path="./todos")
+
+    agent = Agent(
+        client=OpenAIChatClient(),
+        instructions=(
+            "You are a project-management assistant. "
+            "Break every task into trackable todo items."
+        ),
+        context_providers=[TodoProvider(store=store)],
+    )
+
+    # Reuse the same session_id to accumulate todos across runs
+    session = agent.create_session(session_id="sprint-42")
+
+    r = await agent.run(
+        "Plan the three phases of our Q3 product launch: "
+        "marketing, engineering, and customer-support prep.",
+        session=session,
+    )
+    print(r.text)
+
+    # Second turn — mark phase 1 complete after the team signs off
+    r2 = await agent.run(
+        "Engineering phase is done. Mark it complete.",
+        session=session,
+    )
+    print(r2.text)
+
+    # Inspect remaining todos from application code
+    items, _ = await store.load_state(session, source_id="todo")
+    pending = [i for i in items if not i.is_complete]
+    print(f"\n{len(pending)} task(s) remaining:")
+    for item in pending:
+        print(f"  - {item.title}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Use `TodoProvider()` (no `store=`) for in-session todos that vanish at process end. Swap in `TodoFileStore` (or a custom `TodoStore` subclass backed by Cosmos DB / Redis) for durable, cross-session tracking.
+
+---
+
+### Recipe 23 — Plan / execute mode with `AgentModeProvider` (Experimental)
+
+`AgentModeProvider` lets the agent switch between named operating modes. The default modes are **plan** (interactive, ask questions) and **execute** (autonomous, minimise interruptions). You can define any modes you need.
+
+```python
+# mode_agent.py
+import asyncio
+from agent_framework import Agent, AgentModeProvider, set_agent_mode
+from agent_framework.openai import OpenAIChatClient
+
+
+async def main() -> None:
+    agent = Agent(
+        client=OpenAIChatClient(),
+        instructions="You are a senior software engineer.",
+        context_providers=[
+            AgentModeProvider(
+                default_mode="plan",
+                mode_descriptions={
+                    "plan":    "Analyse the requirements and ask clarifying questions. Do not write code yet.",
+                    "execute": "Implement the approved plan autonomously. Do not ask questions mid-task.",
+                    "review":  "Review the completed implementation for correctness and style.",
+                },
+            )
+        ],
+    )
+
+    session = agent.create_session(session_id="feature-auth-v2")
+
+    # Phase 1: planning — agent should ask questions, not write code
+    r1 = await agent.run(
+        "We need to add OAuth2 PKCE login to our FastAPI app.",
+        session=session,
+    )
+    print("=== PLAN PHASE ===")
+    print(r1.text)
+
+    # Switch to execute mode programmatically after the human approves the plan
+    set_agent_mode(
+        session,
+        "execute",
+        available_modes=["plan", "execute", "review"],
+    )
+
+    r2 = await agent.run(
+        "Plan looks good. Go ahead and implement it.",
+        session=session,
+    )
+    print("\n=== EXECUTE PHASE ===")
+    print(r2.text)
+
+    # Switch to review mode
+    set_agent_mode(session, "review", available_modes=["plan", "execute", "review"])
+
+    r3 = await agent.run(
+        "Review what you just built.",
+        session=session,
+    )
+    print("\n=== REVIEW PHASE ===")
+    print(r3.text)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+The agent can also switch modes itself by calling `set_mode` — useful when the agent decides it has enough information to start executing without waiting for the user. Combine with `TodoProvider` (Recipe 22) so the agent tracks its own tasks across the mode transitions.
+
 ---
 
 ## Quick reference
@@ -1047,5 +1172,7 @@ For custom types in `session.state`, register them once at module import via `re
 | Workflow checkpoints | `FileCheckpointStorage(storage_path=...)` + `WorkflowBuilder(checkpoint_storage=)` |
 | Skills | `Skill(...)` + `SkillsProvider(skills=[...])` |
 | Eval gates | `LocalEvaluator(*checks)` + `evaluate_agent(...)` |
+| Agent todo list (exp.) | `TodoProvider(store=TodoFileStore(...))` |
+| Plan / execute modes (exp.) | `AgentModeProvider(mode_descriptions={...})` |
 
 For deep dives see the framework's other Python guides: [tools](./microsoft_agent_framework_python_tools/), [sessions](./microsoft_agent_framework_python_sessions/), [middleware](./microsoft_agent_framework_python_middleware/), [MCP](./microsoft_agent_framework_python_mcp/), [skills](./microsoft_agent_framework_python_skills/), [evaluation](./microsoft_agent_framework_python_evaluation/), [checkpointing](./microsoft_agent_framework_python_checkpointing/), and [orchestration](./microsoft_agent_framework_python_orchestration/).
