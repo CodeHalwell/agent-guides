@@ -508,7 +508,7 @@ workflow = (
 )
 
 result = await workflow.run("I was charged twice on my last invoice.")
-print(result.get_outputs()[-1].text)
+print(result.get_outputs()[-1])
 ```
 
 Conditions are evaluated in declaration order; the first `Case` whose condition returns `True` wins. The `Default` case matches everything that falls through. Exactly one branch executes.
