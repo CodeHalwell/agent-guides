@@ -187,32 +187,41 @@ The `condition` callable receives the output value of the source executor and mu
 
 ### Collecting outputs from specific nodes — `output_executors`
 
-By default `workflow.run(...)` collects outputs from all terminal executors (those with no outgoing edges). Pass `output_executors=` to restrict collection to a named subset — useful when some branches are side-effect-only:
+`result.get_outputs()` collects only values explicitly emitted via `ctx.yield_output()` — plain function return values are **not** captured. Pass `output_executors=` to further restrict which nodes' `yield_output` calls are included, useful when only some branches should contribute to the final result:
 
 ```python
-from agent_framework import FunctionExecutor, WorkflowBuilder
+from agent_framework import FunctionExecutor, WorkflowBuilder, WorkflowContext
+
 
 def split(query: str) -> dict:
     return {"query": query}
 
-def web_search(payload: dict) -> str:
-    return f"web: {payload['query']}"
 
-def db_lookup(payload: dict) -> str:
-    return f"db: {payload['query']}"
+async def web_search(payload: dict, ctx: WorkflowContext[str, str]) -> None:
+    result = f"web: {payload['query']}"
+    await ctx.yield_output(result)   # emitted into get_outputs()
 
-def audit_log(payload: dict) -> None:
-    print(f"Audit: {payload['query']}")   # side-effect only, no useful output
+
+async def db_lookup(payload: dict, ctx: WorkflowContext[str, str]) -> None:
+    result = f"db: {payload['query']}"
+    await ctx.yield_output(result)   # emitted into get_outputs()
+
+
+async def audit_log(payload: dict, ctx: WorkflowContext) -> None:
+    print(f"Audit: {payload['query']}")   # side-effect only — no yield_output call
+
 
 splitter = FunctionExecutor(split,      id="split")
 web      = FunctionExecutor(web_search, id="web")
 db       = FunctionExecutor(db_lookup,  id="db")
 audit    = FunctionExecutor(audit_log,  id="audit")
 
+# output_executors filters which yield_output calls reach get_outputs();
+# the audit node calls no yield_output so it would be excluded regardless
 workflow = (
     WorkflowBuilder(
         start_executor=splitter,
-        output_executors=[web, db],   # audit node excluded from output collection
+        output_executors=[web, db],
     )
     .add_fan_out_edges(splitter, [web, db, audit])
     .build()
@@ -220,7 +229,7 @@ workflow = (
 
 import asyncio
 result  = asyncio.run(workflow.run("latest AI news"))
-outputs = result.get_outputs()   # contains only web and db results
+outputs = result.get_outputs()   # ['web: latest AI news', 'db: latest AI news']
 ```
 
 ### Checkpointing and resume

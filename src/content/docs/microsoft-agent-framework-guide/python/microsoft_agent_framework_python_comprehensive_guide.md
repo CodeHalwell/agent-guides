@@ -1721,13 +1721,19 @@ Note: `MemoryFileStore` methods (`list_topics`, `get_topic`, `delete_topic`, `re
 Subclass `MemoryStore` to use any durable backend — database, blob storage, vector DB. All abstract methods are **synchronous** (no `async`); `MemoryContextProvider` calls them from thread-pool workers when needed:
 
 ```python
-from agent_framework import AgentSession, MemoryStore, MemoryTopicRecord
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any
+
+from agent_framework import AgentSession, MemoryIndexEntry, MemoryStore, MemoryTopicRecord
 
 
 class MyMemoryStore(MemoryStore):
+    # get_owner_id is not abstract — override it to enable per-user isolation
     def get_owner_id(self, session: AgentSession) -> str | None:
-        # Return the logical owner ID (used by MemoryContextProvider for per-user isolation)
         return session.state.get("user_id")
+
+    # --- 10 abstract methods that must be implemented ---
 
     def list_topics(self, session: AgentSession, *, source_id: str) -> list[MemoryTopicRecord]:
         ...
@@ -1742,18 +1748,40 @@ class MyMemoryStore(MemoryStore):
         ...
 
     def rebuild_index(
+        self, session: AgentSession, *, source_id: str, line_limit: int, line_length: int
+    ) -> list[MemoryIndexEntry]:   # returns MemoryIndexEntry objects, not strings
+        ...
+
+    def get_index_text(
         self,
         session: AgentSession,
         *,
         source_id: str,
         line_limit: int,
         line_length: int,
-    ) -> list[str]:
-        # Return a list of index lines; MemoryContextProvider writes MEMORY.md for you
+        index_entries: Sequence[MemoryIndexEntry] | None = None,
+    ) -> str:
         ...
 
-    # Additional abstract methods: get_index_text, append_transcript, list_transcripts,
-    # read_transcript, read_state, write_state, get_transcript_root, search_transcripts
+    def read_state(self, session: AgentSession, *, source_id: str) -> dict[str, Any]:
+        ...
+
+    def write_state(self, session: AgentSession, state: Mapping[str, Any], *, source_id: str) -> None:
+        ...
+
+    def get_transcripts_directory(self, session: AgentSession, *, source_id: str) -> Path:
+        ...
+
+    def search_transcripts(
+        self,
+        session: AgentSession,
+        *,
+        source_id: str,
+        query: str,
+        session_id: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        ...
 ```
 
 Wire it up exactly like `MemoryFileStore` — pass it as the `store=` argument to `MemoryContextProvider`. Override `get_owner_id` to return the owner key from session state so the provider can scope memory per user.
