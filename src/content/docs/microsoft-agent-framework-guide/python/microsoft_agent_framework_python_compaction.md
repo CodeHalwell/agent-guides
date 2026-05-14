@@ -19,7 +19,7 @@ Compaction sees your conversation as an ordered list of **message groups** (user
 
 | Strategy | What it does | Use when |
 |---|---|---|
-| `TruncationStrategy` | Keep the first N and last M messages; exclude the middle | Simple FIFO that preserves system + recent |
+| `TruncationStrategy` | Oldest-first exclusion — drop oldest groups until count (or tokens) falls to `compact_to`; triggers when `max_n` is exceeded | Simple FIFO drop; no extra LLM calls |
 | `SlidingWindowStrategy` | Keep the last `keep_last_groups` non-system groups | Predictable recency window |
 | `SelectiveToolCallCompactionStrategy` | Drop older tool-call groups only | Tool chatter dominates the history |
 | `ToolResultCompactionStrategy` | Collapse older tool calls into one-line summaries | Keep a readable trace but cut tokens |
@@ -100,6 +100,77 @@ Two things this snippet illustrates:
 - `keep_last_groups <= 0` raises `ValueError` at construction — you cannot configure a window of size zero.
 - `preserve_system=False` lets the strategy drop the system anchor too. Use this when system instructions are duplicated by an `instructions=` parameter on the agent (the framework injects them again on each call) and you don't want to pay for both copies.
 - The strategy mutates messages in place via `additional_properties[EXCLUDED_KEY] = True`. Call `included_messages(messages)` to get the projected view, or filter on `EXCLUDED_KEY` directly when you want to display "32 messages collapsed" in your UI.
+
+## Truncation — oldest-first drop
+
+`TruncationStrategy` measures the conversation by **included message count** (default) or **token count** (when a `tokenizer` is supplied). Once the metric exceeds `max_n`, it walks groups oldest-first and marks them excluded until the count falls to `compact_to`. System messages are skipped when `preserve_system=True` (the default).
+
+```python
+from agent_framework import TruncationStrategy
+
+# Count-based: trigger when >40 included messages; compact down to 30.
+strategy = TruncationStrategy(max_n=40, compact_to=30)
+```
+
+A `ValueError` is raised at construction if `compact_to > max_n` or either value is `<= 0`.
+
+### Token-based truncation
+
+Pass any `TokenizerProtocol` to switch the metric from message count to token count:
+
+```python
+from agent_framework import CharacterEstimatorTokenizer, TruncationStrategy
+
+# Token-based: trigger when >8000 tokens; compact down to 6000.
+strategy = TruncationStrategy(
+    max_n=8_000,
+    compact_to=6_000,
+    tokenizer=CharacterEstimatorTokenizer(),  # swap for tiktoken in production
+    preserve_system=True,
+)
+```
+
+### Observing the effect
+
+```python
+import asyncio
+from agent_framework import (
+    Content,
+    Message,
+    TruncationStrategy,
+    apply_compaction,
+    included_messages,
+)
+
+messages = [
+    Message(role="system", contents=[Content.from_text("You are helpful.")]),
+    *[
+        Message(role=role, contents=[Content.from_text(f"{role} turn {i}")])
+        for i in range(8)
+        for role in ("user", "assistant")
+    ],
+]
+# 17 messages total (1 system + 16 user/assistant).
+
+strategy = TruncationStrategy(max_n=10, compact_to=6, preserve_system=True)
+asyncio.run(apply_compaction(messages, strategy=strategy))
+
+kept = included_messages(messages)
+print(len(kept))          # 7 — 1 system + 6 most-recent user/assistant
+print(kept[0].role)       # system  (preserved despite oldest-first pass)
+print(kept[-1].role)      # assistant
+```
+
+The system anchor is immune to oldest-first dropping. The strategy compacts until the included *non-system* count meets `compact_to`, then stops — so the effective kept count is `compact_to + 1` system messages.
+
+### When to prefer `TruncationStrategy` over `SlidingWindowStrategy`
+
+Both perform oldest-first exclusion.  The difference is how they trigger:
+
+- **`SlidingWindowStrategy`** always enforces a fixed window size, every call.
+- **`TruncationStrategy`** is lazy — it only fires when a threshold (`max_n`) is breached, and it stops trimming once `compact_to` is reached. This produces a *sawtooth* pattern: conversation grows from `compact_to` to `max_n` before being compacted, meaning most turns are cheap no-ops.
+
+Use `TruncationStrategy` when you want compaction to feel like "only run when we're actually getting full", and `SlidingWindowStrategy` when you want strict, predictable window sizes on every turn.
 
 ## Selective tool-call compaction
 
