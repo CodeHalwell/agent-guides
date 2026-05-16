@@ -900,7 +900,7 @@ async def handle_data(self, message, ctx):
 async def handle_custom(self, message, ctx): ...
 ```
 
-### Routing patterns — fan-out, fan-in, switch-case, multi-selection
+### Routing patterns — fan-out, fan-in, switch-case, multi-selection, chain shortcut
 
 Beyond linear `add_edge`, `WorkflowBuilder` exposes five routing primitives. Pick the one that matches the topology you want.
 
@@ -947,7 +947,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Never
 from agent_framework import (
-    Case, Default, Executor, FunctionExecutor,
+    Case, Default, Executor,
     WorkflowBuilder, WorkflowContext, executor, handler,
 )
 

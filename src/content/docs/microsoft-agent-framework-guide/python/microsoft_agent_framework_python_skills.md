@@ -660,7 +660,6 @@ Override `resources` and `scripts` directly for the most control (e.g. construct
 from agent_framework import (
     ClassSkill,
     InlineSkillResource,
-    InlineSkillScript,
     SkillFrontmatter,
 )
 
@@ -681,10 +680,9 @@ class ConfigDrivenSkill(ClassSkill):
         return f"Available resources: {names}. Use read_skill_resource to fetch each one."
 
     @property
-    def resources(self):
+    def resources(self) -> list[InlineSkillResource]:
         result = []
         for cfg in self._configs:
-            # capture loop variable correctly
             content = cfg["content"]
             result.append(
                 InlineSkillResource(
