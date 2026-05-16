@@ -136,8 +136,8 @@ All fields available inside a tool that declares a `FunctionInvocationContext` p
 | Field | Type | What it carries |
 |---|---|---|
 | `function` | `FunctionTool` | The tool being invoked — read `function.name`, `function.kind`, etc. |
-| `arguments` | `BaseModel | Mapping[str, Any]` | Already-validated call arguments (Pydantic model when a schema produced one). Mutate before `call_next()` to inject defaults. |
-| `session` | `AgentSession | None` | The agent session for this run; read `session.state` for user/tenant context. |
+| `arguments` | `BaseModel \| Mapping[str, Any]` | Already-validated call arguments (Pydantic model when a schema produced one). Mutate before `call_next()` to inject defaults. |
+| `session` | `AgentSession \| None` | The agent session for this run; read `session.state` for user/tenant context. |
 | `kwargs` | `Mapping[str, Any]` | Extra kwargs forwarded from `agent.run(..., function_invocation_kwargs={...})`. |
 | `metadata` | `dict[str, Any]` | Shared scratchpad across **all function middleware** in the same invocation — write here in one middleware, read in the next. |
 | `result` | `Any` | `None` before `call_next()`; holds the tool's return value afterwards. Override it to rewrite the result. |
@@ -152,7 +152,6 @@ from typing import Annotated
 from agent_framework import (
     Agent,
     FunctionInvocationContext,
-    FunctionMiddleware,
     function_middleware,
     tool,
 )

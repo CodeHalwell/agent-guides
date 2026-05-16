@@ -654,7 +654,7 @@ Key points from the source:
 
 ### Explicit property override — when the decorator pattern doesn't fit
 
-Override `resources` and `scripts` directly for the most control (e.g. constructing resources from a dynamic config table):
+Override `resources` directly for the most control (e.g. constructing resources from a dynamic config table):
 
 ```python
 from agent_framework import (

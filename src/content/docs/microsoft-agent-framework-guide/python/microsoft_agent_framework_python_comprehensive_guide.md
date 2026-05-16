@@ -907,6 +907,7 @@ Beyond linear `add_edge`, `WorkflowBuilder` exposes five routing primitives. Pic
 **Fan-out** — broadcast one source to many targets concurrently:
 
 ```python
+# parser, enricher_a, enricher_b, enricher_c are Executor instances
 workflow = (
     WorkflowBuilder(start_executor=parser)
     .add_fan_out_edges(parser, [enricher_a, enricher_b, enricher_c])
@@ -917,7 +918,7 @@ workflow = (
 **Fan-in** — converge many sources onto one target. The target's handler receives the **list** of upstream messages in one call, so its input type must be `list[T]`:
 
 ```python
-from typing import Never
+from typing import NoReturn
 from agent_framework import Executor, WorkflowBuilder, WorkflowContext, handler
 
 
@@ -926,12 +927,13 @@ class Aggregator(Executor):
     async def aggregate(
         self,
         results: list[str],          # one entry per fan-in source
-        ctx: WorkflowContext[Never, str],
+        ctx: WorkflowContext[NoReturn, str],
     ) -> None:
         combined = " | ".join(results)
         await ctx.yield_output(combined)
 
 
+# parser, worker_a, worker_b, worker_c are Executor instances
 workflow = (
     WorkflowBuilder(start_executor=parser)
     .add_fan_out_edges(parser, [worker_a, worker_b, worker_c])
@@ -945,7 +947,7 @@ workflow = (
 ```python
 import asyncio
 from dataclasses import dataclass
-from typing import Never
+from typing import NoReturn
 from agent_framework import (
     Case, Default, Executor,
     WorkflowBuilder, WorkflowContext, executor, handler,
@@ -966,12 +968,12 @@ class Scorer(Executor):
 
 
 @executor(id="long-handler")
-async def long_handler(payload: ScoredText, ctx: WorkflowContext[Never, str]) -> None:
+async def long_handler(payload: ScoredText, ctx: WorkflowContext[NoReturn, str]) -> None:
     await ctx.yield_output(f"[LONG] {payload.text[:40]}…")
 
 
 @executor(id="short-handler")
-async def short_handler(payload: ScoredText, ctx: WorkflowContext[Never, str]) -> None:
+async def short_handler(payload: ScoredText, ctx: WorkflowContext[NoReturn, str]) -> None:
     await ctx.yield_output(f"[SHORT] {payload.text}")
 
 
@@ -1007,7 +1009,7 @@ asyncio.run(main())
 ```python
 import asyncio
 from dataclasses import dataclass
-from typing import Never
+from typing import NoReturn
 from agent_framework import (
     Executor, FunctionExecutor, WorkflowBuilder,
     WorkflowContext, executor, handler,
@@ -1028,12 +1030,12 @@ class Dispatcher(Executor):
 
 
 @executor(id="specialist-a")
-async def specialist_a(task: Task, ctx: WorkflowContext[Never, str]) -> None:
+async def specialist_a(task: Task, ctx: WorkflowContext[NoReturn, str]) -> None:
     await ctx.yield_output(f"[A] handled: {task.description}")
 
 
 @executor(id="specialist-b")
-async def specialist_b(task: Task, ctx: WorkflowContext[Never, str]) -> None:
+async def specialist_b(task: Task, ctx: WorkflowContext[NoReturn, str]) -> None:
     await ctx.yield_output(f"[B] handled: {task.description}")
 
 
@@ -1071,6 +1073,7 @@ asyncio.run(main())
 **Chain shortcut** — `add_chain([a, b, c])` is equivalent to `.add_edge(a, b).add_edge(b, c)`. Use it for long linear pipelines:
 
 ```python
+# parser, enricher, writer are Executor instances
 workflow = WorkflowBuilder(start_executor=parser).add_chain([parser, enricher, writer]).build()
 ```
 
