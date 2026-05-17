@@ -331,7 +331,7 @@ print(result.get_outputs()[-1])
 
 `get_run_context()` returns `None` when called outside a running workflow, which makes helpers reusable from both workflow and non-workflow callsites. The guard `if ctx is not None` is the idiomatic pattern.
 
-> **Thread safety note.** `ContextVar` propagation follows Python's standard rules — the value is inherited by tasks created with `asyncio.create_task()` and `asyncio.gather()`, but **not** by threads spawned with `asyncio.to_thread()` or `threading.Thread`. If you dispatch to a thread inside a `@step`, pass `ctx` explicitly rather than relying on `get_run_context()`.
+> **Thread safety note.** `ContextVar` propagation follows Python's standard rules — the value is inherited by tasks created with `asyncio.create_task()` and `asyncio.gather()`, and is also propagated to threads spawned with `asyncio.to_thread()` (Python 3.9+). However, it is **not** inherited by raw `threading.Thread` instances. If you use custom threading, pass `ctx` explicitly rather than relying on `get_run_context()`.
 
 ## Parallel execution
 

@@ -569,15 +569,11 @@ Both helpers operate on the in-place-mutated list — call them after `apply_com
 `annotate_message_groups` is what the built-in strategies call internally before deciding what to exclude. It annotates each message with a `group_id`, `group_index`, and `group_type` in `additional_properties`. You can call it directly to understand the group structure without running any strategy:
 
 ```python
-import asyncio
 from agent_framework import (
     Content,
     Message,
-    apply_compaction,
-    included_messages,
-    included_token_count,
+    annotate_message_groups,
 )
-from agent_framework._compaction import annotate_message_groups
 
 messages = [
     Message(role="system", contents=[Content.from_text("Be concise.")]),
