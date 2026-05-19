@@ -289,7 +289,8 @@ A `@tool` that returns a `Command` lets the tool itself drive graph navigation. 
 ```python
 from typing import Annotated
 from typing_extensions import TypedDict
-from langchain_core.tools import tool
+from langchain_core.messages import ToolMessage
+from langchain_core.tools import tool, InjectedToolCallId
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -303,21 +304,35 @@ class SupportState(TypedDict):
 
 
 @tool
-def escalate_to_billing(reason: str) -> Command:
+def escalate_to_billing(
+    reason: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> Command:
     """Escalate this conversation to the billing specialist."""
-    # Returns a Command — ToolNode routes the graph to "billing_agent"
+    # InjectedToolCallId is stripped from the model's schema — it's filled automatically.
+    # A ToolMessage is required so the conversation history remains valid
+    # (every AIMessage tool_call must be followed by a matching ToolMessage).
     return Command(
         goto="billing_agent",
-        update={"assigned_to": "billing", "messages": [("tool", f"Escalated: {reason}")]},
+        update={
+            "assigned_to": "billing",
+            "messages": [ToolMessage(content=f"Escalated to billing: {reason}", tool_call_id=tool_call_id)],
+        },
     )
 
 
 @tool
-def escalate_to_technical(reason: str) -> Command:
+def escalate_to_technical(
+    reason: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> Command:
     """Escalate this conversation to the technical support team."""
     return Command(
         goto="technical_agent",
-        update={"assigned_to": "technical", "messages": [("tool", f"Escalated: {reason}")]},
+        update={
+            "assigned_to": "technical",
+            "messages": [ToolMessage(content=f"Escalated to technical: {reason}", tool_call_id=tool_call_id)],
+        },
     )
 
 
