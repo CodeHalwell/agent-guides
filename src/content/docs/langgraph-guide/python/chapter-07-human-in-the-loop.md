@@ -203,18 +203,24 @@ legal_interrupt: Interrupt = snap.interrupts[0]
 legal_id = legal_interrupt.id
 print(f"Legal interrupt id: {legal_id}")
 
-# Resume with the legal answer by id.
-# When graph resumes, legal interrupt returns "approved" and
-# execution advances to the finance interrupt.
+# Option A — sequential per-id resume (one call per interrupt):
+# Resume with the legal answer by id; execution advances to the finance interrupt.
 list(graph.stream(Command(resume={legal_id: "approved"}), cfg))
 
-# Now collect the finance interrupt id and resume that too
 snap2 = graph.get_state(cfg)
 finance_interrupt: Interrupt = snap2.interrupts[0]
 list(graph.stream(Command(resume={finance_interrupt.id: "approved"}), cfg))
 
 final = graph.get_state(cfg)
 print(final.values["legal_ok"], final.values["finance_ok"])   # True True
+
+# Option B — single-step dual-id resume (supply both ids up-front if you know them):
+# Both interrupts fire in order; a single Command with both ids answers them in one go.
+#
+#   list(graph.stream(
+#       Command(resume={legal_id: "approved", finance_id: "approved"}),
+#       cfg,
+#   ))
 ```
 
 ## Example 4: Multi-step approval workflow
@@ -222,9 +228,8 @@ print(final.values["legal_ok"], final.values["finance_ok"])   # True True
 Each node in the chain owns one interrupt. Each resume drives the graph one step forward.
 
 ```python
-from typing_extensions import TypedDict
 from typing import Annotated
-import operator
+from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import interrupt, Command
@@ -298,7 +303,7 @@ class EditState(TypedDict):
     final: str
 
 
-def review_draft(state: EditState) -> dict:
+def review_draft(state: EditState) -> Command:
     decision = interrupt({
         "question": "Accept, reject, or edit this draft?",
         "draft": state["draft"],

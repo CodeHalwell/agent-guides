@@ -119,7 +119,7 @@ from typing import Annotated
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
 from langchain_anthropic import ChatAnthropic
 
@@ -218,7 +218,7 @@ Annotate a tool parameter with `InjectedStore` and `ToolNode` injects whatever s
 from typing import Annotated
 from typing_extensions import TypedDict
 from langchain_core.tools import tool
-from langgraph.prebuilt import InjectedStore, ToolNode, tools_condition
+from langgraph.prebuilt import InjectedState, InjectedStore, ToolNode, tools_condition
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.store.base import BaseStore
@@ -235,21 +235,25 @@ class ChatState(TypedDict):
 def save_preference(
     preference: str,
     store: Annotated[BaseStore, InjectedStore()],
+    state: Annotated[ChatState, InjectedState],
 ) -> str:
     """Save a user preference for future sessions."""
-    # InjectedStore fills `store` automatically — the LLM only sees `preference`.
-    # We need the user_id too; combine with InjectedState for full access.
-    store.put(("prefs",), preference, {"text": preference})
-    return f"Saved preference: {preference}"
+    # Both store and state are injected automatically — the LLM only sees `preference`.
+    # Namespace by user_id so preferences are isolated per user.
+    user_id = state["user_id"]
+    store.put(("prefs", user_id), preference, {"text": preference})
+    return f"Saved preference for {user_id}: {preference}"
 
 
 @tool
 def recall_preferences(
     topic: str,
     store: Annotated[BaseStore, InjectedStore()],
+    state: Annotated[ChatState, InjectedState],
 ) -> str:
     """Recall saved preferences relevant to a topic."""
-    items = store.search(("prefs",), query=topic, limit=5)
+    user_id = state["user_id"]
+    items = store.search(("prefs", user_id), query=topic, limit=5)
     if not items:
         return "No relevant preferences found."
     return "\n".join(f"- {it.value['text']}" for it in items)
