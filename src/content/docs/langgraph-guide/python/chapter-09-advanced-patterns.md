@@ -695,7 +695,8 @@ class WorkerInput(TypedDict):
 
 
 def dispatch(state: Pipeline) -> list[Send]:
-    """Fan-out: one Send per item, each with its own input snapshot."""
+    # add_conditional_edges accepts a path function that returns list[Send],
+    # not just string node names — this is what enables map-reduce fan-out.
     return [Send("score_item", WorkerInput(item=i)) for i in state["items"]]
 
 

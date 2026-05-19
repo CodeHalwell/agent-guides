@@ -235,10 +235,16 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import interrupt, Command
 
 
+def merge_dicts(x: dict, y: dict) -> dict:
+    return {**x, **y}
+
+
 class WorkflowState(TypedDict):
     action: str
     amount: float
-    approvals: Annotated[dict, lambda x, y: {**x, **y}]
+    # Named function instead of a lambda — lambdas are not picklable and will
+    # fail with serializing checkpointers (SqliteSaver, PostgresSaver).
+    approvals: Annotated[dict, merge_dicts]
     outcome: str
 
 
