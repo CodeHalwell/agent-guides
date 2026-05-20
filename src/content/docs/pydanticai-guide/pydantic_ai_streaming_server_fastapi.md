@@ -16,7 +16,7 @@ PydanticAI's `agent.run_stream()` and `agent.run_stream_events()` produce async 
 ## Installation
 
 ```bash
-pip install "pydantic-ai[openai]" fastapi uvicorn sse-starlette
+pip install "pydantic-ai[openai]" fastapi uvicorn
 ```
 
 ---
@@ -26,8 +26,8 @@ pip install "pydantic-ai[openai]" fastapi uvicorn sse-starlette
 The simplest useful server — streams model tokens as they arrive.
 
 ```python
+import json
 import os
-import asyncio
 from fastapi import FastAPI, Query
 from fastapi.responses import StreamingResponse
 from pydantic_ai import Agent
@@ -44,8 +44,8 @@ async def stream_text(q: str = Query(..., min_length=1)):
     async def event_generator():
         async with agent.run_stream(q) as stream:
             async for delta in stream.stream_text(delta=True):
-                # SSE format: "data: <payload>\n\n"
-                yield f'data: {delta}\n\n'
+                # JSON-encode to prevent newlines in delta from breaking SSE framing
+                yield f'data: {json.dumps({"text": delta})}\n\n'
             # Signal completion; client disconnects on this event
             yield 'event: done\ndata: {}\n\n'
 
@@ -105,11 +105,11 @@ Exposes every protocol event — tool calls, tool results, retries — giving th
 import json
 from fastapi import FastAPI, Query
 from fastapi.responses import StreamingResponse
-from pydantic_ai import Agent, WebSearchTool, RunContext
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import (
-    PartStartEvent, PartDeltaEvent, PartEndEvent,
+    PartStartEvent, PartDeltaEvent,
     FunctionToolCallEvent, FunctionToolResultEvent,
-    FinalResultEvent, AgentRunResultEvent,
+    AgentRunResultEvent,
 )
 
 app = FastAPI()
@@ -237,7 +237,7 @@ async def stream_safe(q: str = Query(...)):
                 usage_limits=UsageLimits(output_tokens_limit=1000),
             ) as stream:
                 async for delta in stream.stream_text(delta=True):
-                    yield f'data: {delta}\n\n'
+                    yield f'data: {json.dumps({"text": delta})}\n\n'
 
                 await stream.get_output()
                 usage = stream.usage()
@@ -331,7 +331,7 @@ async def stream(
         except UsageLimitExceeded as e:
             yield f'event: error\ndata: {json.dumps({"error": "budget_exceeded", "detail": str(e)})}\n\n'
         except UnexpectedModelBehavior as e:
-            logger.error('model_error', exc_info=e)
+            logger.exception('model_error')
             yield f'event: error\ndata: {json.dumps({"error": "model_error", "detail": str(e)})}\n\n'
         except Exception as e:
             logger.exception('unexpected_error')
@@ -380,7 +380,6 @@ CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
 pydantic-ai[openai]>=1.99.0
 fastapi>=0.115
 uvicorn[standard]>=0.34
-sse-starlette>=2.1
 ```
 
 ### Kubernetes Deployment
