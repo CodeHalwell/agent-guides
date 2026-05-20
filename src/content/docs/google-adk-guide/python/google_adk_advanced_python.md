@@ -503,6 +503,8 @@ async def request_approval(
     """
     ticket_id = f"EXP-{int(asyncio.get_event_loop().time())}"
     tool_context.state["approval_ticket"] = ticket_id
+    # Persist the function call id so the webhook handler can reference it
+    tool_context.state["approval_call_id"] = tool_context.function_call_id
     # Fire-and-forget: notify the approver via Slack / email
     await notify_approver(ticket_id, amount, description)
     return {
@@ -521,10 +523,16 @@ agent = LlmAgent(
 )
 ```
 
-When the manager responds (via webhook or another invocation), call `runner.run_async` again with a `FunctionResponse` carrying the decision:
+When the manager responds (via webhook or another invocation), retrieve the stored call ID from the session and resume via `runner.run_async`:
 
 ```python
 from google.genai import types
+
+# Fetch the session to retrieve the persisted function call id
+session = await runner.session_service.get_session(
+    app_name="expense_app", user_id="u1", session_id="s1"
+)
+call_id = session.state.get("approval_call_id")
 
 await runner.run_async(
     user_id="u1",
@@ -535,7 +543,7 @@ await runner.run_async(
             types.Part(
                 function_response=types.FunctionResponse(
                     name="request_approval",
-                    id=tool_context.function_call_id,
+                    id=call_id,   # retrieved from session state saved by the tool
                     response={"status": "approved"},
                 )
             )

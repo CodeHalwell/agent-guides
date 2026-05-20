@@ -19,8 +19,8 @@ import pytest
 from google.adk.evaluation.agent_evaluator import AgentEvaluator
 from google.adk.evaluation.eval_case import EvalCase, Invocation, SessionInput
 from google.adk.evaluation.eval_set import EvalSet
-from google.adk.evaluation.eval_metrics import EvalMetric, PrebuiltMetrics
-from google.adk.evaluation.eval_config import EvalConfig, EvalMetric
+from google.adk.evaluation.eval_metrics import PrebuiltMetrics
+from google.adk.evaluation.eval_config import EvalConfig
 from google.genai import types
 
 # Define a single-turn eval case
@@ -159,7 +159,7 @@ eval_set = EvalSet(
     eval_set_id="full_regression",
     name="Full regression suite",
     description="Tests the booking and weather sub-agents.",
-    eval_cases=[case1, case2, case3],
+    eval_cases=[case],          # replace with your list of EvalCase objects
 )
 
 # Serialise to JSON file for reuse
@@ -189,7 +189,6 @@ from google.adk.evaluation.eval_metrics import (
 config = EvalConfig(
     criteria={
         # Simple threshold — the metric must score >= value to pass
-        PrebuiltMetrics.TOOL_TRAJECTORY_AVG_SCORE.value: 0.9,
         PrebuiltMetrics.RESPONSE_MATCH_SCORE.value: 0.7,
 
         # LLM-as-judge with custom model and sampling
