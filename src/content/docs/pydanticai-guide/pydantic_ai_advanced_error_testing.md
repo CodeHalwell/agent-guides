@@ -357,10 +357,13 @@ def test_messages_on_failure():
 ### 5. Inject specific exceptions via `FunctionModel`
 
 ```python
-from pydantic_ai import Agent, capture_run_messages
+import pytest
+from pydantic_ai import Agent
 from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.models.function import FunctionModel, AgentInfo
+from pydantic_ai.messages import ModelMessage, ModelResponse
 
-def model_that_raises(messages, info):
+def model_that_raises(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
     # Simulate provider returning an unexpected response
     return ModelResponse(parts=[])   # empty parts triggers UnexpectedModelBehavior
 
