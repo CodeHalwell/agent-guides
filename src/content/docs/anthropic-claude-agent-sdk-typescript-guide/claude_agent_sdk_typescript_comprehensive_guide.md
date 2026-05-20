@@ -3262,8 +3262,8 @@ The comprehensive guide continues with detailed sections on each topic with exte
 
 ## Revision History
 
-| Version | Date | Changes |
-|---------|------|----------|
+| Version | Date | Changes | Reviewer |
+|---------|------|----------|----------|
 | 0.3.145 | May 20, 2026 | Patch release; no API changes. `Latest:` header updated 0.3.144 → 0.3.145; revision history entry added. All 25 exports verified against installed `@anthropic-ai/claude-agent-sdk@0.3.145` (`.routine-envs/check-0520-node`); `query`, `tool`, `createSdkMcpServer`, session helpers all PASS. | Claude routine |
 | 0.3.144 | May 19, 2026 | Major minor-version bump 0.2.141 → 0.3.144. Three `unstable_v2_*` preview exports removed; package now exports 25 stable symbols. Full export surface verified against installed `@anthropic-ai/claude-agent-sdk@0.3.144` (`.routine-envs/check-0519-node`). | Claude routine |
 | 0.2.141 | May 14, 2026 | Patch release; stability and dependency updates. Full export surface verified against installed `@anthropic-ai/claude-agent-sdk@0.2.141` (`.routine-envs/check-0514-node`): 28 exports confirmed including `query`, `tool`, `createSdkMcpServer`, session helpers, error types, and constants. |
