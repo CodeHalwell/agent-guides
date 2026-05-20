@@ -20,7 +20,7 @@ Verified against **`langgraph==1.2.0`** / **`langgraph-prebuilt==1.1.0`** (modul
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import MessagesState, add_messages
+from langgraph.graph.message import MessagesState
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -173,6 +173,7 @@ The `execute` callable runs the original tool and returns a `ToolMessage | Comma
 A dataclass representing a single pending tool call as seen by `wrap_tool_call`.
 
 ```python
+from dataclasses import dataclass
 from langgraph.prebuilt.tool_node import ToolCallRequest
 
 @dataclass
@@ -215,6 +216,16 @@ builder.add_conditional_edges("agent", tools_condition)
 ```
 
 When `state` is a dict, `messages_key` controls which key holds the list (default `"messages"`). When `state` is a list, it is used directly. When `state` is a Pydantic model, the `messages` attribute is accessed.
+
+> **Important:** `tools_condition` always returns the literal string `"tools"` or `"__end__"`. Your `ToolNode` must be registered with `name="tools"` (the default). If you name the node differently, add a `path_map` to remap the return value:
+>
+> ```python
+> builder.add_conditional_edges(
+>     "agent",
+>     tools_condition,
+>     {"tools": "my_tool_executor", "__end__": END},
+> )
+> ```
 
 ## `InjectedState`
 
@@ -284,6 +295,7 @@ If the graph has no store compiled in, the injected value is `None` and tools th
 A dataclass injected into tools that declare a `runtime` parameter with type `ToolRuntime`. No `Annotated` wrapper is needed — `ToolNode` detects the parameter name `runtime` and the type annotation.
 
 ```python
+from dataclasses import dataclass, field
 from langgraph.prebuilt.tool_node import ToolRuntime
 
 @dataclass
@@ -621,5 +633,5 @@ tool_node = ToolNode([power], wrap_tool_call=audit_wrapper)
 |---|---|
 | 1.1.0 (prebuilt) | `ToolCallRequest.override()` introduced; direct attribute assignment deprecated. `awrap_tool_call` added. |
 | 1.0.0 (prebuilt) | `ValidationNode` deprecated — use `create_agent` from `langchain.agents`. `AgentState` / `AgentStatePydantic` moved to `langchain.agents`. |
-| 0.6 | `ToolRuntime` added; `execution_info` and `server_info` fields introduced on `ToolRuntime`. `context_schema` support added to graph; `runtime.context` accessible in tools via `ToolRuntime`. |
+| 1.2.0 / prebuilt 1.1.0 | `ToolRuntime` dataclass introduced in `langgraph-prebuilt`; exposes `state`, `context`, `config`, `stream_writer`, `tool_call_id`, `store`, `tools`, `execution_info`, `server_info`. `emit_output_delta` added. |
 | 0.3.8 (langchain-core) | `InjectedStore` requires `langchain-core >= 0.3.8`. |

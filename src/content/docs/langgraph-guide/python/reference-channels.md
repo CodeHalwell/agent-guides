@@ -25,20 +25,18 @@ from langgraph.channels import Topic
 
 
 class State(TypedDict):
-    # Default channel: one write per step
-    status: str
-    # BinaryOperatorAggregate: accumulate a running sum
+    # BinaryOperatorAggregate: accumulate a running sum across parallel writers
     total: Annotated[int, operator.add]
     # Topic: collect all writes in a step into a list
     events: Annotated[list[str], Topic(str)]
 
 
 def node_a(state: State) -> dict:
-    return {"total": 10, "events": "node_a ran", "status": "a"}
+    return {"total": 10, "events": "node_a ran"}
 
 
 def node_b(state: State) -> dict:
-    return {"total": 5, "events": "node_b ran", "status": "b"}
+    return {"total": 5, "events": "node_b ran"}
 
 
 # Run a and b in parallel
@@ -50,13 +48,12 @@ builder.add_edge(START, "b")
 builder.add_edge(["a", "b"], END)
 
 graph = builder.compile()
-result = graph.invoke({"status": "", "total": 0, "events": []})
+result = graph.invoke({"total": 0, "events": []})
 print(result["total"])   # 15  (10 + 5, applied in order)
 print(result["events"])  # ['node_a ran', 'node_b ran']
-# "status" would raise InvalidUpdateError — two concurrent writes, no reducer
 ```
 
-> The `status` field above would raise `InvalidUpdateError` in the parallel example because `LastValue` (the default) rejects concurrent writes. The example intentionally shows both correct (`total`, `events`) and incorrect (`status`) patterns.
+> `LastValue` (the default channel for plain, unannotated keys) rejects concurrent writes with `InvalidUpdateError`. If both `node_a` and `node_b` wrote to an unannotated `status: str` key, the graph would crash. Use `BinaryOperatorAggregate` or `Topic` for channels that parallel nodes all write to.
 
 ## Imports at a glance
 
@@ -232,31 +229,32 @@ The `accumulate` parameter:
 from typing import Annotated
 from typing_extensions import TypedDict
 from langgraph.channels import Topic
+from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
+
 
 class Pipeline(TypedDict):
     items: list[str]
-    results: Annotated[list[str], Topic(str)]   # cleared each step
-
-
-def dispatch(state: Pipeline) -> list[Send]:
-    # Fan out: one worker per item
-    return [Send("process", {"item": item, "results": []}) for item in state["items"]]
+    results: Annotated[list[str], Topic(str)]   # cleared each step; collects all writes
 
 
 def process(state: dict) -> dict:
-    # Each worker writes one result; Topic collects them all
+    # Each parallel worker writes one result; Topic collects them all
     return {"results": f"processed:{state['item']}"}
 
 
-from langgraph.graph import StateGraph, START, END
-
 builder = StateGraph(Pipeline)
-builder.add_node("dispatch", dispatch)
 builder.add_node("process", process)
-builder.add_conditional_edges("dispatch", lambda s: [Send("process", {"item": i, "results": []}) for i in s["items"]])
-builder.add_edge(START, "dispatch")
+# Fan out directly from START: one Send per item, all run in parallel
+builder.add_conditional_edges(
+    START,
+    lambda s: [Send("process", {"item": item, "results": []}) for item in s["items"]],
+)
 builder.add_edge("process", END)
+
+graph = builder.compile()
+result = graph.invoke({"items": ["a", "b", "c"], "results": []})
+print(result["results"])  # ['processed:a', 'processed:b', 'processed:c']
 ```
 
 ---
@@ -375,10 +373,10 @@ Any write that is not in `names` raises `InvalidUpdateError` immediately.
 Full constructor:
 
 ```python
-NamedBarrierValue(typ: type[Value], names: set[Value])
+NamedBarrierValue(typ: type[str], names: set[str])
 ```
 
-- `typ` — the element type (typically `str`).
+- `typ` — the element type. In practice always `str` (the token strings each writer sends).
 - `names` — the complete set of expected writers. Every element in this set must be written before `get()` returns.
 
 ```python
@@ -532,11 +530,13 @@ def summarize(state: State) -> dict:
 builder = StateGraph(State)
 builder.add_node("crawl", crawl)
 builder.add_node("summarize", summarize)
+# then="summarize" ensures summarize runs once after ALL Send-spawned crawl tasks finish,
+# not after each individual one completes.
 builder.add_conditional_edges(
     START,
     lambda s: [Send("crawl", {"url": u, "events": []}) for u in s["urls"]],
+    then="summarize",
 )
-builder.add_edge("crawl", "summarize")
 builder.add_edge("summarize", END)
 
 graph = builder.compile()
@@ -605,7 +605,8 @@ WORKERS = {"alpha", "beta", "gamma"}
 
 class S(TypedDict):
     inputs: list[str]
-    outputs: dict
+    # Use a merge reducer so parallel workers can each add their own key without collision
+    outputs: Annotated[dict, lambda a, b: {**a, **b}]
     # Barrier: all three workers must report in
     barrier: Annotated[None, NamedBarrierValue(str, names=WORKERS)]
 
@@ -613,7 +614,7 @@ class S(TypedDict):
 def make_worker(name: str):
     def worker(state: S) -> dict:
         return {
-            "outputs": {**state["outputs"], name: f"result_from_{name}"},
+            "outputs": {name: f"result_from_{name}"},  # merged by reducer
             "barrier": name,   # write our name to the barrier channel
         }
     worker.__name__ = name
