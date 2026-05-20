@@ -267,22 +267,22 @@ Each operation becomes a `BaseTool` whose parameters are the path/query/body fie
 
 ## Custom `BaseTool`
 
-Subclass `BaseTool` when you need full control over the tool schema or must modify the `LlmRequest` before it is sent. `FunctionTool` is sufficient for 95 % of use cases.
+Subclass `BaseTool` when you need full control over the tool schema or must modify the `LlmRequest` before it is sent. `FunctionTool` is sufficient for 95% of use cases.
 
 ```python
-from typing import Any, Optional
+from typing import Any
 from google.genai import types
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
-from google.adk.models.llm_request import LlmRequest
 
-class SqlLookupTool(BaseTool):
-    """Run a parameterised read-only SQL query."""
+
+class ProductLookupTool(BaseTool):
+    """Look up a product by SKU from the catalogue database."""
 
     def __init__(self, db_pool):
         super().__init__(
-            name="sql_lookup",
-            description="Execute a read-only SQL query against the analytics database.",
+            name="lookup_product",
+            description="Retrieve product details by SKU from the catalogue.",
         )
         self._db = db_pool
 
@@ -293,24 +293,29 @@ class SqlLookupTool(BaseTool):
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "query": types.Schema(
+                    "sku": types.Schema(
                         type=types.Type.STRING,
-                        description="A read-only SQL SELECT statement.",
+                        description="The SKU identifier (e.g. 'WIDGET-42').",
                     ),
                 },
-                required=["query"],
+                required=["sku"],
             ),
         )
 
     async def run_async(
         self, *, args: dict[str, Any], tool_context: ToolContext
     ) -> dict:
-        query = args.get("query", "").strip()
-        if not query.upper().startswith("SELECT"):
-            return {"error": "Only SELECT statements are allowed."}
-        rows = await self._db.fetch(query)
-        tool_context.state["last_query"] = query
-        return {"rows": [dict(r) for r in rows], "count": len(rows)}
+        sku = args.get("sku", "").strip()
+        if not sku:
+            return {"error": "sku is required"}
+        # Parameterised query — never interpolate LLM-supplied values directly
+        row = await self._db.fetchrow(
+            "SELECT name, price, stock FROM products WHERE sku = $1", sku
+        )
+        if row is None:
+            return {"error": f"SKU {sku!r} not found"}
+        tool_context.state["last_sku"] = sku
+        return {"name": row["name"], "price": row["price"], "stock": row["stock"]}
 ```
 
 Key overrides (`tools/base_tool.py`):
@@ -355,6 +360,9 @@ class RoleBasedToolset(BaseToolset):
             tools.append(FunctionTool(func=self._delete_data))
         return tools
 
+    # Simple in-memory store for illustration; replace with a real DB in production
+    _store: dict = {}
+
     async def _read_data(self, key: str) -> dict:
         """Read a value from the shared data store.
 
@@ -363,7 +371,7 @@ class RoleBasedToolset(BaseToolset):
         Returns:
           A dict with the value.
         """
-        return {"value": data_store.get(key)}
+        return {"value": self._store.get(key)}
 
     async def _write_data(self, key: str, value: str) -> dict:
         """Write a value to the shared data store.
@@ -374,7 +382,7 @@ class RoleBasedToolset(BaseToolset):
         Returns:
           A dict with `ok: true`.
         """
-        data_store[key] = value
+        self._store[key] = value
         return {"ok": True}
 
     async def _delete_data(self, key: str) -> dict:
@@ -385,7 +393,7 @@ class RoleBasedToolset(BaseToolset):
         Returns:
           A dict with `deleted: true`.
         """
-        data_store.pop(key, None)
+        self._store.pop(key, None)
         return {"deleted": True}
 
     async def close(self) -> None:
@@ -415,7 +423,7 @@ agent = LlmAgent(
 | `tool_context.function_call_id` | The unique ID of the current function call — needed when sending a `FunctionResponse` back manually |
 | `tool_context.actions.skip_summarization` | Set to `True` to suppress the model from narrating the tool result |
 | `tool_context.actions.transfer_to_agent` | Programmatically transfer control to another agent by setting its name |
-| `await tool_context.save_artifact(filename, part)` | Persist a file to the artifact service; returns the version int |
+| `await tool_context.save_artifact(filename=..., artifact=part)` | Persist a file to the artifact service; returns the version int |
 | `await tool_context.load_artifact(filename, version=None)` | Retrieve a saved artifact |
 | `tool_context.list_artifacts()` | List filenames in scope |
 | `tool_context.request_credential(auth_config)` | Pause the tool and trigger an OAuth / API-key flow |

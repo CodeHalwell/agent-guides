@@ -337,10 +337,11 @@ agent = LlmAgent(name="root", tools=[fs_a, fs_b])
 ### API-key tools
 
 ```python
-from google.adk.tools.authenticated_function_tool import AuthenticatedFunctionTool
+import httpx
 from google.adk.auth.auth_tool import AuthConfig
 from google.adk.auth.auth_schemes import APIKeyScheme
-from google.adk.auth.auth_credential import AuthCredential, APIKey
+from google.adk.tools.function_tool import FunctionTool
+from google.adk.tools.tool_context import ToolContext
 
 async def call_external_api(endpoint: str, tool_context: ToolContext) -> dict:
     """Call the external analytics API.
@@ -370,6 +371,7 @@ tool = FunctionTool(func=call_external_api)
 ### OAuth2 / OIDC tools
 
 ```python
+import httpx
 from google.adk.auth.auth_tool import AuthConfig
 from google.adk.auth.auth_schemes import OpenIdConnectWithConfig
 from google.adk.auth.auth_credential import AuthCredential, OAuth2Auth
@@ -604,6 +606,8 @@ web_app = FastAPI(lifespan=lifespan)
 
 @web_app.post("/chat/{session_id}")
 async def chat(session_id: str, body: dict):
+    if runner is None:
+        raise HTTPException(status_code=503, detail="Service not ready")
     user_id = body.get("user_id", "anonymous")
     text = body.get("message", "")
     if not text:

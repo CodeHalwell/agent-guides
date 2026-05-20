@@ -277,7 +277,7 @@ await AgentEvaluator.evaluate(
 
 `eval_dataset_file_path_or_dir` can be:
 - A path to a single `.test.json` file (old format) or `.evalset.json` file (new `EvalSet` format).
-- A directory — ADK recursively finds all `*.test.json` files.
+- A directory — ADK recursively finds all `*.test.json` files. Note: directory scanning uses the old `.test.json` suffix only; pass individual `.evalset.json` paths explicitly.
 
 ### Agent module conventions
 
