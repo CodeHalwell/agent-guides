@@ -1,6 +1,6 @@
 ---
 title: "Microsoft Agent Framework (Python) — Sessions & history"
-description: "AgentSession, HistoryProvider, InMemoryHistoryProvider, FileHistoryProvider, register_state_type, multi-provider audit logs, and serializing sessions across processes. APIs stable from agent-framework-core 1.5.0; verified against 1.4.0."
+description: "AgentSession, HistoryProvider, InMemoryHistoryProvider, FileHistoryProvider, register_state_type, multi-provider audit logs, and serializing sessions across processes. APIs stable from agent-framework-core 1.5.0; verified against 1.5.0."
 framework: microsoft-agent-framework
 language: python
 ---

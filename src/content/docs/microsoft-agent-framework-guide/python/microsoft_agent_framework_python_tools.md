@@ -449,7 +449,7 @@ FunctionTool(
     max_invocations: int | None = None,     # raise ToolException after N successful calls
     max_invocation_exceptions: int | None = None,  # raise ToolException after N errors
     additional_properties: dict | None = None,     # custom metadata attached to the FunctionTool object
-    kind: str = "function",                 # tool kind forwarded to the LLM (do not change)
+    kind: str = "function",                 # free-form classification label; use "readonly", "mutating", etc.
 )
 ```
 
